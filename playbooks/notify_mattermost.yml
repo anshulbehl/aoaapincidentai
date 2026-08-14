@@ -1,0 +1,41 @@
+---
+- name: Incidents | Notify - Post to Mattermost
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Build Mattermost message
+      ansible.builtin.set_fact:
+        mm_message: |
+          ### {{ notification_title | default('AO Incident Notification') }}
+          **Ticket:** {{ ticket_id | default('N/A') }} | **Host:** {{ target_host | default('N/A') }}
+
+          {{ notification_body | default('No details provided.') }}
+
+    - name: Post to Mattermost
+      ansible.builtin.uri:
+        url: "{{ mattermost_url }}/api/v4/posts"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ mattermost_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          channel_id: "{{ mattermost_channel_id }}"
+          message: "{{ mm_message }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: mm_result
+      ignore_errors: true
+
+    - name: Log to console
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          {{ notification_title | default('AO Incident Notification') }}
+          Ticket: {{ ticket_id | default('N/A') }} | Host: {{ target_host | default('N/A') }}
+
+          {{ notification_body | default('No details provided.') }}
+          ============================================================
+          Mattermost: {{ 'SENT' if not mm_result.failed else 'FAILED - logged to job output only' }}

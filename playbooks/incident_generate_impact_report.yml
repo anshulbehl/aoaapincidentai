@@ -1,0 +1,92 @@
+---
+- name: Incident - Generate Impact Report
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    target_host: "{{ target_host | default('unknown') }}"
+    ticket_id: "{{ ticket_id | default('INC0000000') }}"
+    incident_type: "{{ incident_type | default('unknown') }}"
+
+  tasks:
+    - name: Set host context from inventory
+      ansible.builtin.set_fact:
+        host_env: "{{ hostvars[target_host]['env'] | default('unknown') }}"
+        host_role: "{{ hostvars[target_host]['role'] | default('unknown') }}"
+        host_criticality: "{{ hostvars[target_host]['criticality'] | default('unknown') }}"
+      when: target_host in hostvars
+      ignore_errors: true
+
+    - name: Set defaults
+      ansible.builtin.set_fact:
+        host_env: "{{ host_env | default('unknown') }}"
+        host_role: "{{ host_role | default('unknown') }}"
+        host_criticality: "{{ host_criticality | default('unknown') }}"
+
+    - name: Determine SLA tier and escalation policy
+      ansible.builtin.set_fact:
+        sla_tier: >-
+          {%- if host_env == 'production' and host_criticality in ['high','critical'] -%}P1
+          {%- elif host_env == 'production' -%}P2
+          {%- else -%}P3{%- endif -%}
+        mttr_target: >-
+          {%- if host_env == 'production' and host_criticality in ['high','critical'] -%}15 minutes
+          {%- elif host_env == 'production' -%}4 hours
+          {%- else -%}next business day{%- endif -%}
+        auto_escalate_after: >-
+          {%- if host_env == 'production' and host_criticality in ['high','critical'] -%}30 minutes
+          {%- elif host_env == 'production' -%}2 hours
+          {%- else -%}none{%- endif -%}
+        change_control_required: "{{ 'YES' if host_env == 'production' else 'NO' }}"
+        approval_required: "{{ 'YES' if host_env == 'production' else 'NO' }}"
+
+    - name: Determine downstream impact
+      ansible.builtin.set_fact:
+        downstream_impact: >-
+          {%- if host_role == 'web_server' -%}External user traffic affected. API gateway upstream may begin queuing requests.
+          {%- elif host_role == 'database' -%}All application tiers dependent on this DB will begin failing. Data writes at risk.
+          {%- elif host_role == 'app_tier' -%}Web tier serving 503s. Background job queue may back up.
+          {%- else -%}Impact scope being assessed.{%- endif -%}
+        compliance_note: >-
+          {%- if host_criticality == 'critical' -%}SOC2 availability control impacted. Incident must be documented for audit trail.
+          {%- elif host_env == 'production' -%}Change must follow CAB process per change management policy.
+          {%- else -%}No compliance obligations triggered.{%- endif -%}
+
+    - name: Post impact report to SNOW work notes
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          IMPACT ANALYSIS REPORT — {{ ticket_id }}
+          ============================================================
+          Host:              {{ target_host }}
+          Environment:       {{ host_env | upper }}
+          Role:              {{ host_role }}
+          Criticality:       {{ host_criticality | upper }}
+          Incident Type:     {{ incident_type }}
+
+          SLA CLASSIFICATION
+          ------------------
+          Priority:          {{ sla_tier }}
+          MTTR Target:       {{ mttr_target }}
+          Auto-Escalate At:  {{ auto_escalate_after }}
+          Change Control:    {{ change_control_required }}
+          Approval Required: {{ approval_required }}
+
+          DOWNSTREAM IMPACT
+          -----------------
+          {{ downstream_impact }}
+
+          COMPLIANCE / GOVERNANCE
+          -----------------------
+          {{ compliance_note }}
+
+          RECOMMENDED NEXT STEP
+          ---------------------
+          {% if approval_required == 'YES' %}
+          HOLD — Awaiting operator approval before automated remediation.
+          Approver will review this report before proceeding.
+          {% else %}
+          Proceed with automated remediation. No approval gate required.
+          {% endif %}
+          ============================================================
+          [SNOW] Work notes updated on {{ ticket_id }}

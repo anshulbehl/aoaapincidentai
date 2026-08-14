@@ -1,0 +1,111 @@
+---
+# Play 1: Plant issues on target host for 'unknown' incident type
+- name: Simulate - Plant Issues on Host (unknown only)
+  hosts: "{{ target_host | default('cert-demo-vm') }}"
+  gather_facts: false
+  become: true
+  vars:
+    incident_types_list: "{{ incident_types if incident_types is iterable and incident_types is not string else [incident_types] }}"
+
+  tasks:
+    - name: Check if unknown incident selected
+      ansible.builtin.set_fact:
+        simulate_unknown: "{{ 'unknown' in incident_types_list }}"
+
+    - name: Fill app session storage to cause 500 errors
+      ansible.builtin.shell: |
+        umount /var/log/app-sessions 2>/dev/null || true
+        mount -t tmpfs -o size=1m tmpfs /var/log/app-sessions
+        dd if=/dev/zero of=/var/log/app-sessions/filler.bin bs=1K 2>/dev/null || true
+        echo "Simulated: app session storage full - app returning 500 errors"
+      when: simulate_unknown
+      changed_when: true
+
+    - name: Write application error messages to syslog
+      ansible.builtin.shell: |
+        for i in {1..50}; do
+          logger -t nginx -p local0.err "write() to '/var/log/nginx/error.log' failed (28: No space left on device)"
+          logger -t app -p local0.err "CRITICAL: Failed to write session data - disk full on /var/log partition"
+        done
+        logger -t kernel -p kern.err "EXT4-fs error: no space left on device"
+      when: simulate_unknown
+      changed_when: true
+
+    - name: Report simulation complete
+      ansible.builtin.debug:
+        msg: "Issue planted: disk pressure + application errors written to syslog on {{ inventory_hostname }}"
+      when: simulate_unknown
+
+# Play 2: Fire AO webhooks
+- name: Simulate - Fire AO Webhooks
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    incident_types_list: "{{ incident_types if incident_types is iterable and incident_types is not string else [incident_types] }}"
+    target_host: "{{ target_host | default('cert-demo-vm') }}"
+    severity: "{{ severity | default('2-High') }}"
+    ao_base_url: "{{ lookup('env', 'AO_BASE_URL') | default('http://54.159.25.87:8080') }}"
+    ao_sa_client_id: "{{ lookup('env', 'AO_CLIENT_ID') }}"
+    ao_sa_client_secret: "{{ lookup('env', 'AO_CLIENT_SECRET') }}"
+    incident_descriptions:
+      service_down: "Web server returning 503 errors on {{ target_host }}. Users unable to reach the application. On-call team cannot identify root cause."
+      config_drift: "Configuration drift detected on {{ target_host }}. SSH policy violation flagged by compliance scanner."
+      capacity_issue: "Disk utilization on {{ target_host }} approaching threshold. Logs and temp files consuming root filesystem."
+      unknown: "Customer portal showing intermittent 500 errors. API response times elevated. Users reporting failures. No obvious root cause identified by on-call team."
+
+  tasks:
+    - name: Get AO service account token
+      ansible.builtin.uri:
+        url: "{{ ao_base_url }}/api/v1/auth/token"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          grant_type: client_credentials
+          client_id: "{{ ao_sa_client_id }}"
+          client_secret: "{{ ao_sa_client_secret }}"
+        status_code: [200, 201]
+      register: ao_token_resp
+
+    - name: Set AO token
+      ansible.builtin.set_fact:
+        ao_token: "{{ ao_token_resp.json.access_token }}"
+
+    - name: Fire webhook for each incident type
+      ansible.builtin.uri:
+        url: "{{ ao_base_url }}/api/v1/webhooks/{{ 'snow-incident-scn5' if item == 'unknown' else 'snow-incident-scn4' }}"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ ao_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          ticket_id: "INC{{ 9000 + (ansible_loop.index * 11) }}"
+          incident_type: "{{ item }}"
+          host: "{{ target_host }}"
+          description: "{{ incident_descriptions[item] | default('Incident simulated for demo.') }}"
+          severity: "{{ severity }}"
+        status_code: [200, 201, 202]
+        validate_certs: false
+      loop: "{{ incident_types_list }}"
+      loop_control:
+        loop_var: item
+        extended: true
+      register: webhook_results
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          INCIDENTS SIMULATED
+          ============================================================
+          {% for result in webhook_results.results %}
+          [{{ result.item | upper }}]
+            Ticket:   INC{{ 9000 + (loop.index * 11) }}
+            Workflow: {{ 'SCN5 (AI path)' if result.item == 'unknown' else 'SCN4 (Deterministic)' }}
+            Status:   {{ 'FIRED' if result.status in [200,201,202] else 'FAILED' }}
+            {% if result.item == 'unknown' %}
+            Note: Disk pressure + error logs planted on {{ target_host }}
+            {% endif %}
+          {% endfor %}
+          ============================================================

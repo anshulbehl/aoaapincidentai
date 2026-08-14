@@ -1,0 +1,33 @@
+---
+- name: Linux - Service Recovery
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    target_host: "{{ target_host | default('unknown') }}"
+    ticket_id: "{{ ticket_id | default('INC0000000') }}"
+
+  tasks:
+    - name: Simulate multi-step service recovery
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          SERVICE RECOVERY — {{ ticket_id }}
+          ============================================================
+          Host:   {{ target_host }}
+          Action: Executing service recovery runbook
+
+          STEP 1/4  Stopping dependent services gracefully ....... OK
+          STEP 2/4  Clearing stale PID files and socket locks .... OK
+          STEP 3/4  Starting core services in dependency order ... OK
+          STEP 4/4  Health check — all endpoints responding ....... OK
+
+          RECOVERY COMPLETE
+          -----------------
+          Services restored in 42 seconds.
+          All health checks passing.
+          No data loss detected.
+
+          [SNOW] {{ ticket_id }} resolved — automated service recovery
+          successful on {{ target_host }}. Incident closed.
+          ============================================================

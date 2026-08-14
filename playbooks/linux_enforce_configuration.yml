@@ -1,0 +1,49 @@
+---
+- name: Linux - Enforce Configuration
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    target_host: "{{ target_host | default('unknown') }}"
+    ticket_id: "{{ ticket_id | default('INC0000000') }}"
+
+  tasks:
+    - name: Simulate config drift analysis and enforcement
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          CONFIG DRIFT — ESCALATED TO CHANGE MANAGEMENT
+          Ticket: {{ ticket_id }} | Host: {{ target_host }}
+          ============================================================
+          DRIFT DETECTED (assessed, NOT auto-remediated)
+          -----------------------------------------------
+          Rule violated:    CIS RHEL 9 Benchmark v1.0 - Section 5.2
+          Policy:           SSH MaxAuthTries must be <= 4
+          Current value:    6
+          Required value:   4
+          Drift since:      2026-08-13T18:42:00Z
+
+          RISK CLASSIFICATION
+          -------------------
+          Severity:         MEDIUM
+          Compliance scope: SOC2 CC6.1, CIS Level 1
+          Exploitability:   Low — requires network access to SSH port
+          Data at risk:     None (configuration hardening issue)
+
+          WHY NOT AUTO-REMEDIATED
+          -----------------------
+          Per change management policy, configuration changes on
+          production systems require a CAB-approved change ticket.
+          Auto-enforcement is disabled for compliance-scoped policies
+          to maintain audit integrity.
+
+          RECOMMENDED ACTION
+          ------------------
+          1. Open change ticket in ServiceNow referencing {{ ticket_id }}
+          2. CAB approval (next window: Thursday 08:00 UTC)
+          3. Apply: echo "MaxAuthTries 4" >> /etc/ssh/sshd_config && systemctl restart sshd
+          4. Verify with: sshd -T | grep maxauthtries
+
+          [SNOW] {{ ticket_id }} escalated to Change Management.
+          Impact report attached. Awaiting CAB approval.
+          ============================================================
