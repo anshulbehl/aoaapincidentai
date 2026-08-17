@@ -16,8 +16,8 @@
       register: disk_root_avail
       changed_when: false
 
-    - name: Get /var/log disk usage
-      ansible.builtin.shell: df /var/log 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%'
+    - name: Get app session storage usage
+      ansible.builtin.shell: df /var/log/app-sessions 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%'
       register: disk_varlog_pct
       changed_when: false
       ignore_errors: true
