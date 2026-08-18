@@ -3,17 +3,11 @@
   hosts: localhost
   connection: local
   gather_facts: false
-  vars:
-    snow_state_map:
-      impact_analysis: "2"
-      escalated: "3"
-      resolved: "6"
-      default: ""
 
   tasks:
     - name: Look up SNOW ticket sys_id by number
       ansible.builtin.uri:
-        url: "{{ snow_instance_url }}/api/now/table/incident?sysparm_query=number={{ ticket_id }}&sysparm_fields=sys_id,number,state&sysparm_limit=1"
+        url: "{{ snow_instance_url }}/api/now/table/incident?sysparm_query=number={{ ticket_id }}&sysparm_fields=sys_id,number,state,description&sysparm_limit=1"
         method: GET
         user: "{{ snow_username }}"
         password: "{{ snow_password }}"
@@ -31,16 +25,33 @@
     - name: Set ticket sys_id
       ansible.builtin.set_fact:
         snow_sys_id: "{{ snow_lookup.json.result[0].sys_id }}"
-        snow_current_state: "{{ snow_lookup.json.result[0].state }}"
 
-    - name: Build work note content
+    - name: Build updated description
       ansible.builtin.set_fact:
-        work_note_body: |
+        updated_description: |
+          {{ snow_lookup.json.result[0].description }}
+
+          ---
           [{{ notification_title | default('AO Automation Update') }}]
 
           {{ notification_body | default('') }}
 
-    - name: Post work note to SNOW ticket
+    - name: Build SNOW update payload
+      ansible.builtin.set_fact:
+        snow_payload: >-
+          {%- set payload = {"description": updated_description} -%}
+          {%- if snow_ticket_state | default('') -%}
+            {%- set _ = payload.update({"state": snow_ticket_state}) -%}
+          {%- endif -%}
+          {%- if snow_ticket_state | default('') == '6' -%}
+            {%- set _ = payload.update({
+              "close_code": "Solved (Permanently)",
+              "close_notes": notification_body | default('Resolved by automated remediation.')
+            }) -%}
+          {%- endif -%}
+          {{ payload }}
+
+    - name: Update SNOW ticket
       ansible.builtin.uri:
         url: "{{ snow_instance_url }}/api/now/table/incident/{{ snow_sys_id }}"
         method: PATCH
@@ -51,9 +62,7 @@
           Content-Type: "application/json"
           Accept: "application/json"
         body_format: json
-        body:
-          work_notes: "{{ work_note_body }}"
-          state: "{{ snow_ticket_state | default('') if snow_ticket_state | default('') else omit }}"
+        body: "{{ snow_payload }}"
         status_code: 200
       register: snow_update
 
