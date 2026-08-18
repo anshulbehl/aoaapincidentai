@@ -108,8 +108,59 @@
     # SCN4 routes: service_down, config_drift, capacity_issue
     # SCN5 routes: unknown
     scn4_types: ['service_down', 'config_drift', 'capacity_issue']
+    snow_instance_url: "{{ lookup('env', 'SNOW_INSTANCE_URL') | default('https://ansible.service-now.com') }}"
+    snow_username: "{{ lookup('env', 'SNOW_USERNAME') }}"
+    snow_password: "{{ lookup('env', 'SNOW_PASSWORD') }}"
+    snow_caller_id: "0163e3d5871202505d60da083cbb3538"
+    snow_category_map:
+      service_down: "infrastructure"
+      config_drift: "security"
+      capacity_issue: "infrastructure"
+      unknown: "software"
+    snow_urgency_map:
+      "1-Critical": "1"
+      "2-High": "2"
+      "3-Medium": "3"
+      "4-Low": "4"
 
   tasks:
+    - name: Create SNOW ticket for each incident type
+      ansible.builtin.uri:
+        url: "{{ snow_instance_url }}/api/now/table/incident"
+        method: POST
+        user: "{{ snow_username }}"
+        password: "{{ snow_password }}"
+        force_basic_auth: true
+        headers:
+          Content-Type: "application/json"
+          Accept: "application/json"
+        body_format: json
+        body:
+          short_description: "{{ item | replace('_', ' ') | title }} detected on {{ target_host }}"
+          description: "{{ incident_descriptions[item] | default('Incident detected.') }}"
+          caller_id: "{{ snow_caller_id }}"
+          category: "{{ snow_category_map[item] | default('software') }}"
+          urgency: "{{ snow_urgency_map[severity] | default('2') }}"
+          impact: "{{ snow_urgency_map[severity] | default('2') }}"
+          state: "1"
+        status_code: [200, 201]
+      loop: "{{ incident_types_list }}"
+      loop_control:
+        loop_var: item
+        extended: true
+      register: snow_tickets
+
+    - name: Build ticket ID map
+      ansible.builtin.set_fact:
+        ticket_map: "{{ ticket_map | default({}) | combine({result.item: result.json.result.number}) }}"
+      loop: "{{ snow_tickets.results }}"
+      loop_control:
+        loop_var: result
+
+    - name: Show created tickets
+      ansible.builtin.debug:
+        msg: "Created SNOW tickets: {{ ticket_map }}"
+
     - name: Get AO service account token
       ansible.builtin.uri:
         url: "{{ ao_base_url }}/api/v1/auth/token"
@@ -135,7 +186,7 @@
           Content-Type: "application/json"
         body_format: json
         body:
-          ticket_id: "INC{{ 9000 + (ansible_loop.index * 11) }}"
+          ticket_id: "{{ ticket_map[item] | default('INC' + (9000 + ansible_loop.index * 11) | string) }}"
           incident_type: "{{ item }}"
           host: "{{ target_host }}"
           description: "{{ incident_descriptions[item] | default('Incident simulated for demo.') }}"
