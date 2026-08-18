@@ -1,0 +1,136 @@
+---
+- name: Incidents | Impact Report
+  hosts: "{{ target_host | default('cert-demo-vm') }}"
+  gather_facts: true
+  become: true
+  vars:
+    incident_type: "{{ incident_type | default('unknown') }}"
+    ticket_id: "{{ ticket_id | default('INC0000000') }}"
+
+  tasks:
+    - name: Get host classification from inventory
+      ansible.builtin.set_fact:
+        host_env: "{{ hostvars[inventory_hostname]['env'] | default('unknown') }}"
+        host_role: "{{ hostvars[inventory_hostname]['role'] | default('unknown') }}"
+        host_criticality: "{{ hostvars[inventory_hostname]['criticality'] | default('unknown') }}"
+
+    - name: Determine SLA tier
+      ansible.builtin.set_fact:
+        sla_tier: >-
+          {%- if host_env == 'production' and host_criticality in ['high','critical'] -%}P1 - 15min MTTR
+          {%- elif host_env == 'production' -%}P2 - 4hr MTTR
+          {%- else -%}P3 - Best effort{%- endif -%}
+        change_control: "{{ 'Required' if host_env == 'production' else 'Not required' }}"
+        approval_required: "{{ 'Yes' if host_env == 'production' else 'No' }}"
+
+    - name: Gather service_down impact facts
+      when: incident_type == 'service_down'
+      block:
+        - name: Check ops-monitor status
+          ansible.builtin.shell: systemctl is-active ops-monitor 2>/dev/null || echo "inactive"
+          register: svc_status
+          changed_when: false
+
+        - name: Check system load
+          ansible.builtin.shell: uptime | awk -F'load average:' '{print $2}' | xargs
+          register: sys_load
+          changed_when: false
+
+        - name: Count active connections
+          ansible.builtin.shell: ss -tn state established 2>/dev/null | wc -l
+          register: conn_count
+          changed_when: false
+
+        - name: Set service impact facts
+          ansible.builtin.set_fact:
+            impact_detail: "ops-monitor service is {{ svc_status.stdout | trim }}. System load: {{ sys_load.stdout | trim }}. Active connections: {{ conn_count.stdout | trim }}."
+            recommendation: "Restart ops-monitor service. Verify system connectivity post-recovery."
+            affected_systems: "Infrastructure monitoring, alerting pipeline, health check endpoints"
+
+    - name: Gather config_drift impact facts
+      when: incident_type == 'config_drift'
+      block:
+        - name: Check current sshd MaxAuthTries
+          ansible.builtin.shell: grep MaxAuthTries /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "not set"
+          register: current_max
+          changed_when: false
+
+        - name: Check last sshd config modification
+          ansible.builtin.shell: stat -c '%y' /etc/ssh/sshd_config 2>/dev/null | cut -d'.' -f1
+          register: config_mtime
+          changed_when: false
+
+        - name: Set config drift impact facts
+          ansible.builtin.set_fact:
+            impact_detail: "SSH MaxAuthTries currently set to {{ current_max.stdout | trim }} (policy requires ≤4). Config last modified: {{ config_mtime.stdout | trim }}. Compliance scope: CIS RHEL 9 Benchmark, SOC2 CC6.1."
+            recommendation: "Do not auto-remediate on production. Open change request for CAB review. Apply via approved change window."
+            affected_systems: "SSH access policy, compliance posture, security audit trail"
+
+    - name: Gather capacity_issue impact facts
+      when: incident_type == 'capacity_issue'
+      block:
+        - name: Get disk usage
+          ansible.builtin.shell: df -h / | tail -1 | awk '{print $5" used, "$4" free"}'
+          register: disk_stat
+          changed_when: false
+
+        - name: Find largest files in /var/log
+          ansible.builtin.shell: find /var/log -type f -size +100M -exec ls -lh {} \; 2>/dev/null | awk '{print $5, $9}' | head -5 || echo "none found"
+          register: large_files
+          changed_when: false
+
+        - name: Set capacity impact facts
+          ansible.builtin.set_fact:
+            impact_detail: "Disk usage: {{ disk_stat.stdout | trim }}. Large files: {{ large_files.stdout | replace('\n', ' | ') | trim }}."
+            recommendation: "Run disk cleanup to remove large log files. Disk usage should drop below 30% post-remediation."
+            affected_systems: "Log write operations, application session storage, monitoring data retention"
+
+    - name: Set defaults if no specific facts gathered
+      ansible.builtin.set_fact:
+        impact_detail: "{{ impact_detail | default('Impact assessment running. Host vars collected.') }}"
+        recommendation: "{{ recommendation | default('Manual investigation required.') }}"
+        affected_systems: "{{ affected_systems | default('Unknown') }}"
+
+    - name: Print impact report to job log
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          IMPACT ANALYSIS REPORT — {{ ticket_id }}
+          ============================================================
+          Host:           {{ inventory_hostname }}
+          Environment:    {{ host_env | upper }}
+          Role:           {{ host_role }}
+          Criticality:    {{ host_criticality | upper }}
+          Incident Type:  {{ incident_type }}
+
+          SLA CLASSIFICATION
+          ------------------
+          Priority:          {{ sla_tier }}
+          Change Control:    {{ change_control }}
+          Approval Required: {{ approval_required }}
+
+          IMPACT DETAILS
+          --------------
+          {{ impact_detail }}
+
+          AFFECTED SYSTEMS
+          ----------------
+          {{ affected_systems }}
+
+          RECOMMENDATION
+          --------------
+          {{ recommendation }}
+          ============================================================
+
+    - name: Publish impact artifacts
+      ansible.builtin.set_stats:
+        data:
+          host_env: "{{ host_env }}"
+          host_role: "{{ host_role }}"
+          host_criticality: "{{ host_criticality }}"
+          sla_tier: "{{ sla_tier }}"
+          change_control: "{{ change_control }}"
+          approval_required: "{{ approval_required }}"
+          impact_detail: "{{ impact_detail }}"
+          affected_systems: "{{ affected_systems }}"
+          recommendation: "{{ recommendation }}"

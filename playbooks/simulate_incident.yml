@@ -8,10 +8,62 @@
     incident_types_list: "{{ incident_types if incident_types is iterable and incident_types is not string else [incident_types] }}"
 
   tasks:
-    - name: Check if unknown incident selected
+    - name: Check incident types selected
       ansible.builtin.set_fact:
         simulate_unknown: "{{ 'unknown' in incident_types_list }}"
+        simulate_service_down: "{{ 'service_down' in incident_types_list }}"
+        simulate_config_drift: "{{ 'config_drift' in incident_types_list }}"
+        simulate_capacity: "{{ 'capacity_issue' in incident_types_list }}"
 
+    # --- service_down: stop ops-monitor service ---
+    - name: Stop ops-monitor service to simulate infrastructure incident
+      ansible.builtin.systemd:
+        name: ops-monitor
+        state: stopped
+      when: simulate_service_down
+      ignore_errors: true
+
+    - name: Log service failure to syslog
+      ansible.builtin.shell: |
+        logger -t ops-monitor -p daemon.err "ops-monitor[$(systemctl show ops-monitor -p MainPID --value)]: CRITICAL - service stopped unexpectedly"
+        logger -t systemd -p daemon.err "ops-monitor.service: Main process exited, code=killed"
+      when: simulate_service_down
+      changed_when: true
+      ignore_errors: true
+
+    # --- config_drift: modify sshd_config ---
+    - name: Backup sshd_config before drift simulation
+      ansible.builtin.copy:
+        src: /etc/ssh/sshd_config
+        dest: /etc/ssh/sshd_config.bak
+        remote_src: true
+      when: simulate_config_drift
+
+    - name: Introduce SSH configuration drift (MaxAuthTries violation)
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?MaxAuthTries'
+        line: 'MaxAuthTries 10'
+        state: present
+      when: simulate_config_drift
+
+    - name: Log compliance violation
+      ansible.builtin.shell: |
+        logger -t sshd -p auth.warn "sshd_config drift detected: MaxAuthTries=10 violates CIS policy (max 4)"
+      when: simulate_config_drift
+      changed_when: true
+      ignore_errors: true
+
+    # --- capacity_issue: fill disk ---
+    - name: Fill disk with large log file to simulate capacity issue
+      ansible.builtin.shell: |
+        fallocate -l 7G /var/log/capacity_test.log 2>/dev/null || \
+          dd if=/dev/zero bs=1M count=7168 of=/var/log/capacity_test.log 2>/dev/null
+        echo "Capacity issue simulated: 7GB log file created"
+      when: simulate_capacity
+      changed_when: true
+
+    # --- unknown: fill tmpfs (AI scenario) ---
     - name: Fill app session storage to cause 500 errors
       ansible.builtin.shell: |
         umount /var/log/app-sessions 2>/dev/null || true
@@ -49,10 +101,13 @@
     ao_sa_client_id: "{{ lookup('env', 'AO_CLIENT_ID') }}"
     ao_sa_client_secret: "{{ lookup('env', 'AO_CLIENT_SECRET') }}"
     incident_descriptions:
-      service_down: "Web server returning 503 errors on {{ target_host }}. Users unable to reach the application. On-call team cannot identify root cause."
-      config_drift: "Configuration drift detected on {{ target_host }}. SSH policy violation flagged by compliance scanner."
-      capacity_issue: "Disk utilization on {{ target_host }} approaching threshold. Logs and temp files consuming root filesystem."
-      unknown: "Customer portal showing intermittent 500 errors. API response times elevated. Users reporting failures. No obvious root cause identified by on-call team."
+      service_down: "ops-monitor infrastructure service stopped unexpectedly on {{ target_host }}. Monitoring pipeline affected. Alerting and health checks may be missing."
+      config_drift: "SSH configuration drift detected on {{ target_host }}. MaxAuthTries set to 10, violating CIS RHEL 9 benchmark (policy max: 4). Compliance scanner flagged."
+      capacity_issue: "Disk utilization on {{ target_host }} at critical threshold. Large log files consuming root filesystem. Write operations at risk."
+      unknown: "API Gateway showing intermittent 500 errors. Response times elevated. Users reporting failures. No obvious root cause identified by on-call team."
+    # SCN4 routes: service_down, config_drift, capacity_issue
+    # SCN5 routes: unknown
+    scn4_types: ['service_down', 'config_drift', 'capacity_issue']
 
   tasks:
     - name: Get AO service account token
