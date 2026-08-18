@@ -103,7 +103,8 @@
           changed_when: false
 
         - name: Get config file modification timestamp
-          ansible.builtin.shell: stat -c '%y' /etc/ssh/sshd_config 2>/dev/null | cut -d'.' -f1 || echo "unknown"
+          ansible.builtin.shell: |
+            stat -c '%y' /etc/ssh/sshd_config 2>/dev/null | cut -d'.' -f1 || echo "unknown"
           register: config_mtime
           changed_when: false
 
@@ -160,7 +161,8 @@
       when: incident_type == 'capacity_issue'
       block:
         - name: Get root disk usage details
-          ansible.builtin.shell: df -h / | tail -1 | awk '{print "Used: "$3" of "$2" ("$5")"}'
+          ansible.builtin.shell: |
+            df -h / | tail -1 | awk '{printf "Used: %s of %s (%s)\n", $3, $2, $5}'
           register: disk_usage
           changed_when: false
 
