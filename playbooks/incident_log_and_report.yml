@@ -3,23 +3,17 @@
   hosts: localhost
   connection: local
   gather_facts: false
-  vars:
-    target_host: "{{ target_host | default('unknown') }}"
-    ticket_id: "{{ ticket_id | default('INC0000000') }}"
-    incident_type: "{{ incident_type | default('unknown') }}"
-    description: "{{ description | default('No description provided') }}"
-
   tasks:
     - name: Log unrecognized incident and notify ops
       ansible.builtin.debug:
         msg: |
           ============================================================
           UNRECOGNIZED INCIDENT — LOGGED FOR MANUAL REVIEW
-          Ticket: {{ ticket_id }}
+          Ticket: {{ ticket_id | default('INC0000000') }}
           ============================================================
-          Host:          {{ target_host }}
-          Incident type: {{ incident_type }}
-          Description:   {{ description }}
+          Host:          {{ target_host | default('unknown') }}
+          Incident type: {{ incident_type | default('unclassified') }}
+          Description:   {{ description | default('No description provided') }}
 
           AUTOMATED ASSESSMENT
           --------------------
@@ -28,8 +22,8 @@
 
           CATALOG CHECK
           -------------
-          Known types: service_down, config_drift, capacity_issue, unknown
-          Received:    {{ incident_type }}
+          Known types: service_down, config_drift, capacity_issue, unclassified
+          Received:    {{ incident_type | default('unclassified') }}
           Match:       NONE
 
           NEXT STEPS FOR OPS TEAM

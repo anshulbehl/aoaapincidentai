@@ -3,12 +3,13 @@
   hosts: localhost
   connection: local
   gather_facts: false
-  vars:
-    target_host: "{{ target_host | default('unknown') }}"
-    ticket_id: "{{ ticket_id | default('INC0000000') }}"
-    incident_type: "{{ incident_type | default('unknown') }}"
-
   tasks:
+    - name: Set variable defaults
+      ansible.builtin.set_fact:
+        target_host: "{{ target_host | default('unknown') }}"
+        ticket_id: "{{ ticket_id | default('INC0000000') }}"
+        incident_type: "{{ incident_type | default('unclassified') }}"
+
     - name: Set host context from inventory
       ansible.builtin.set_fact:
         host_env: "{{ hostvars[target_host]['env'] | default('unknown') }}"

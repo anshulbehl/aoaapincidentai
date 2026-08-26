@@ -3,11 +3,13 @@
   hosts: "{{ target_host | default('cert-demo-vm') }}"
   gather_facts: true
   become: true
-  vars:
-    incident_type: "{{ incident_type | default('unknown') }}"
-    ticket_id: "{{ ticket_id | default('INC0000000') }}"
-
   tasks:
+    - name: Set variable defaults
+      ansible.builtin.set_fact:
+        incident_type: "{{ incident_type | default('unclassified') }}"
+        ticket_id: "{{ ticket_id | default('INC0000000') }}"
+
+
     - name: Get host classification from inventory
       ansible.builtin.set_fact:
         host_env: "{{ hostvars[inventory_hostname]['env'] | default('unknown') }}"
