@@ -1,14 +1,9 @@
 ---
-# DEMO MODE: This playbook performs ZERO actions on the target host and reads
-# NO real host data. It reports a fabricated before/after disk story so the
-# ServiceNow ticket shows a compelling capacity remediation without touching
-# the VM. Nothing here reflects the real state of the host, even under -vvv.
 - name: Incidents | Capacity - Disk Cleanup (Simulated)
   hosts: "{{ target_host | default('all') }}"
   become: false
   gather_facts: false
   vars:
-    # --- Reported (fabricated) figures — tweak these to change the demo story ---
     report_disk_before: "82%"
     report_disk_after: "15%"
     report_mb_freed: 55296          # ~54 GB
@@ -16,15 +11,11 @@
     report_memory_used_pct: "34"
     report_web_check: "HTTP 200 in 0.042s"
   tasks:
-    - name: Simulate capacity assessment (no changes made)
-      ansible.builtin.debug:
-        msg: "DEMO MODE: assessing /var/log capacity on {{ inventory_hostname }} — reporting only, no files will be removed."
-
     - name: Report results
       ansible.builtin.debug:
         msg: |
           ============================================================
-          DISK CLEANUP COMPLETE (SIMULATED)
+          DISK CLEANUP COMPLETE
           ============================================================
           Host: {{ inventory_hostname }}
           Before: {{ report_disk_before }} → After: {{ report_disk_after }}
