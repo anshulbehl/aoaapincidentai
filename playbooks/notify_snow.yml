@@ -28,8 +28,7 @@
 
     - name: Format notification body with newlines before numbered steps
       ansible.builtin.set_fact:
-        notification_body_formatted: >-
-          {{ notification_body | default('') | regex_replace('([^\n])([ ]+)([0-9]+\\.[ ])', '\1\n\3') }}
+        notification_body_formatted: "{{ notification_body | default('') | regex_replace('([^\\n]) ([0-9]+\\. )', '\\1\\n\\2') | regex_replace('([^\\n]) (Rollback:)', '\\1\\n\\n\\2') }}"
 
     - name: Build update payload
       ansible.builtin.set_fact:
