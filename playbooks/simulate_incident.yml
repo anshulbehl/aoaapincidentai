@@ -10,7 +10,7 @@
   tasks:
     - name: Check incident types selected
       ansible.builtin.set_fact:
-        simulate_unknown: "{{ 'unknown' in incident_types_list }}"
+        simulate_unknown: "{{ 'unclassified' in incident_types_list }}"
         simulate_service_down: "{{ 'service_down' in incident_types_list }}"
         simulate_config_drift: "{{ 'config_drift' in incident_types_list }}"
         simulate_capacity: "{{ 'capacity_issue' in incident_types_list }}"
@@ -104,9 +104,9 @@
       service_down: "ops-monitor infrastructure service stopped unexpectedly on {{ target_host }}. Monitoring pipeline affected. Alerting and health checks may be missing."
       config_drift: "SSH configuration drift detected on {{ target_host }}. MaxAuthTries set to 10, violating CIS RHEL 9 benchmark (policy max: 4). Compliance scanner flagged."
       capacity_issue: "Disk utilization on {{ target_host }} at critical threshold. Large log files consuming root filesystem. Write operations at risk."
-      unknown: "API Gateway showing intermittent 500 errors. Response times elevated. Users reporting failures. No obvious root cause identified by on-call team."
+      unclassified: "API Gateway showing intermittent 500 errors. Response times elevated. Users reporting failures. No obvious root cause identified by on-call team."
     # SCN4 routes: service_down, config_drift, capacity_issue
-    # SCN5 routes: unknown
+    # SCN5 routes: unclassified
     scn4_types: ['service_down', 'config_drift', 'capacity_issue']
     snow_instance_url: "{{ lookup('env', 'SNOW_INSTANCE_URL') | default('https://ansible.service-now.com') }}"
     snow_username: "{{ lookup('env', 'SNOW_USERNAME') }}"
@@ -116,7 +116,7 @@
       service_down: "infrastructure"
       config_drift: "security"
       capacity_issue: "infrastructure"
-      unknown: "software"
+      unclassified: "software"
     snow_urgency_map:
       "1-Critical": "1"
       "2-High": "2"
@@ -179,7 +179,7 @@
 
     - name: Fire webhook for each incident type
       ansible.builtin.uri:
-        url: "{{ ao_base_url }}/api/v1/webhooks/{{ 'snow-incident-scn5' if item == 'unknown' else 'snow-incident-scn4' }}"
+        url: "{{ ao_base_url }}/api/v1/webhooks/{{ 'snow-incident-scn5' if item == 'unclassified' else 'snow-incident-scn4' }}"
         method: POST
         headers:
           Authorization: "Bearer {{ ao_token }}"
@@ -208,9 +208,9 @@
           {% for result in webhook_results.results %}
           [{{ result.item | upper }}]
             Ticket:   INC{{ 9000 + (loop.index * 11) }}
-            Workflow: {{ 'SCN5 (AI path)' if result.item == 'unknown' else 'SCN4 (Deterministic)' }}
+            Workflow: {{ 'SCN5 (AI path)' if result.item == 'unclassified' else 'SCN4 (Deterministic)' }}
             Status:   {{ 'FIRED' if result.status in [200,201,202] else 'FAILED' }}
-            {% if result.item == 'unknown' %}
+            {% if result.item == 'unclassified' %}
             Note: Disk pressure + error logs planted on {{ target_host }}
             {% endif %}
           {% endfor %}
