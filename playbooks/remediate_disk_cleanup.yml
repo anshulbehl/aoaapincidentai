@@ -1,18 +1,20 @@
 ---
-# DEMO MODE: This playbook connects to the target host and gathers facts,
-# but performs ZERO destructive actions. It reports a fabricated before/after
-# disk story so the ServiceNow ticket shows a compelling capacity remediation
-# without actually modifying the VM.
+# DEMO MODE: This playbook performs ZERO actions on the target host and reads
+# NO real host data. It reports a fabricated before/after disk story so the
+# ServiceNow ticket shows a compelling capacity remediation without touching
+# the VM. Nothing here reflects the real state of the host, even under -vvv.
 - name: Incidents | Capacity - Disk Cleanup (Simulated)
   hosts: "{{ target_host | default('all') }}"
   become: false
-  gather_facts: true
+  gather_facts: false
   vars:
     # --- Reported (fabricated) figures — tweak these to change the demo story ---
     report_disk_before: "82%"
     report_disk_after: "15%"
     report_mb_freed: 55296          # ~54 GB
     report_files_removed: 6
+    report_memory_used_pct: "34"
+    report_web_check: "HTTP 200 in 0.042s"
   tasks:
     - name: Simulate capacity assessment (no changes made)
       ansible.builtin.debug:
@@ -30,21 +32,6 @@
           Space freed: {{ report_mb_freed }}MB
           ============================================================
 
-    - name: Gather post-remediation memory (read-only)
-      ansible.builtin.shell: "free | awk '/Mem:/{printf \"%d\", ($3/$2)*100}'"
-      register: mem_pct_after
-      changed_when: false
-      ignore_errors: true
-
-    - name: Check web service post-remediation (read-only)
-      ansible.builtin.shell: |
-        CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health 2>/dev/null) && \
-        TIME=$(curl -s -o /dev/null -w "%{time_total}" http://localhost:8080/health 2>/dev/null) && \
-        echo "HTTP $CODE in ${TIME}s" || echo "unreachable"
-      register: web_after
-      changed_when: false
-      ignore_errors: true
-
     - name: Publish results as artifacts
       ansible.builtin.set_stats:
         data:
@@ -52,7 +39,7 @@
           disk_after: "{{ report_disk_after }}"
           large_files_removed: "{{ report_files_removed }}"
           mb_freed: "{{ report_mb_freed }}"
-          memory_used_pct_after: "{{ mem_pct_after.stdout | default('') | trim }}"
-          web_check_after: "{{ web_after.stdout | default('') | trim }}"
+          memory_used_pct_after: "{{ report_memory_used_pct }}"
+          web_check_after: "{{ report_web_check }}"
           disk_errors_remaining: "0"
           status: "completed"
