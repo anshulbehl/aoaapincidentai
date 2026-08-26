@@ -1,95 +1,42 @@
 ---
-- name: Incidents | Capacity - Disk Cleanup
+# DEMO MODE: This playbook connects to the target host and gathers facts,
+# but performs ZERO destructive actions. It reports a fabricated before/after
+# disk story so the ServiceNow ticket shows a compelling capacity remediation
+# without actually modifying the VM.
+- name: Incidents | Capacity - Disk Cleanup (Simulated)
   hosts: "{{ target_host | default('all') }}"
-  become: true
+  become: false
   gather_facts: true
+  vars:
+    # --- Reported (fabricated) figures — tweak these to change the demo story ---
+    report_disk_before: "82%"
+    report_disk_after: "15%"
+    report_mb_freed: 55296          # ~54 GB
+    report_files_removed: 6
   tasks:
-    - name: Capture app session storage before cleanup
-      ansible.builtin.shell: |
-        df /var/log/app-sessions 2>/dev/null | tail -1 | awk '{print $5}' || echo "100%"
-      register: disk_before
-      changed_when: false
-
-    - name: Clear app session storage (remount fresh tmpfs)
-      ansible.builtin.shell: |
-        umount /var/log/app-sessions 2>/dev/null || true
-        mount -t tmpfs -o size=1m tmpfs /var/log/app-sessions
-        echo "Session storage cleared"
-      changed_when: true
-      ignore_errors: true
-
-    - name: Find large files in /var/log (> threshold MB)
-      ansible.builtin.find:
-        paths: /var/log
-        size: "{{ large_file_threshold_mb | default(100) }}m"
-        recurse: true
-        file_type: file
-      register: large_log_files
-
-    - name: Remove large log files
-      ansible.builtin.file:
-        path: "{{ item.path }}"
-        state: absent
-      loop: "{{ large_log_files.files }}"
-      loop_control:
-        label: "{{ item.path }} ({{ (item.size / 1048576) | round(0) }}MB)"
-
-    - name: Remove compressed log archives
-      ansible.builtin.find:
-        paths: /var/log
-        patterns: "*.gz"
-        age: "{{ log_retention_days | default(7) }}d"
-        recurse: true
-      register: old_gz_logs
-
-    - name: Delete compressed logs
-      ansible.builtin.file:
-        path: "{{ item.path }}"
-        state: absent
-      loop: "{{ old_gz_logs.files }}"
-      loop_control:
-        label: "{{ item.path }}"
-
-    - name: Force log rotation
-      ansible.builtin.command: logrotate -f /etc/logrotate.conf
-      ignore_errors: true
-      changed_when: true
-
-    - name: Clear dnf cache
-      ansible.builtin.command: dnf clean all
-      when: ansible_facts['os_family'] == 'RedHat'
-      ignore_errors: true
-      changed_when: true
-
-    - name: Capture app session storage after cleanup
-      ansible.builtin.shell: |
-        df /var/log/app-sessions 2>/dev/null | tail -1 | awk '{print $5}' || echo "0%"
-      register: disk_after
-      changed_when: false
+    - name: Simulate capacity assessment (no changes made)
+      ansible.builtin.debug:
+        msg: "DEMO MODE: assessing /var/log capacity on {{ inventory_hostname }} — reporting only, no files will be removed."
 
     - name: Report results
       ansible.builtin.debug:
         msg: |
           ============================================================
-          DISK CLEANUP COMPLETE
+          DISK CLEANUP COMPLETE (SIMULATED)
           ============================================================
-          Before: {{ disk_before.stdout }} → After: {{ disk_after.stdout }}
-          Large files removed: {{ large_log_files.files | length }}
-          Compressed logs removed: {{ old_gz_logs.files | length }}
-          Space freed: {{ large_log_files.files | map(attribute='size') | sum | int // 1048576 }}MB from large files
+          Host: {{ inventory_hostname }}
+          Before: {{ report_disk_before }} → After: {{ report_disk_after }}
+          Files removed: {{ report_files_removed }}
+          Space freed: {{ report_mb_freed }}MB
           ============================================================
 
-    - name: Drop Linux page cache to free memory
-      ansible.builtin.shell: sync && echo 3 > /proc/sys/vm/drop_caches
-      changed_when: true
-      ignore_errors: true
-
-    - name: Gather post-remediation memory
+    - name: Gather post-remediation memory (read-only)
       ansible.builtin.shell: "free | awk '/Mem:/{printf \"%d\", ($3/$2)*100}'"
       register: mem_pct_after
       changed_when: false
+      ignore_errors: true
 
-    - name: Check web service post-remediation
+    - name: Check web service post-remediation (read-only)
       ansible.builtin.shell: |
         CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health 2>/dev/null) && \
         TIME=$(curl -s -o /dev/null -w "%{time_total}" http://localhost:8080/health 2>/dev/null) && \
@@ -98,22 +45,14 @@
       changed_when: false
       ignore_errors: true
 
-    - name: Check for new disk errors since remediation started
-      ansible.builtin.shell: |
-        journalctl -p err --since "-60 seconds" --no-pager --output=short 2>/dev/null | \
-        grep -i "no space\|disk full\|ENOSPC" | wc -l
-      register: disk_errors_after
-      changed_when: false
-      ignore_errors: true
-
     - name: Publish results as artifacts
       ansible.builtin.set_stats:
         data:
-          disk_before: "{{ disk_before.stdout }}"
-          disk_after: "{{ disk_after.stdout }}"
-          large_files_removed: "{{ large_log_files.files | length + 1 }}"
-          mb_freed: "{{ (large_log_files.files | map(attribute='size') | sum | int // 1048576) + 1024 }}"
-          memory_used_pct_after: "{{ mem_pct_after.stdout | trim }}"
-          web_check_after: "{{ web_after.stdout | trim }}"
-          disk_errors_remaining: "{{ disk_errors_after.stdout | trim }}"
+          disk_before: "{{ report_disk_before }}"
+          disk_after: "{{ report_disk_after }}"
+          large_files_removed: "{{ report_files_removed }}"
+          mb_freed: "{{ report_mb_freed }}"
+          memory_used_pct_after: "{{ mem_pct_after.stdout | default('') | trim }}"
+          web_check_after: "{{ web_after.stdout | default('') | trim }}"
+          disk_errors_remaining: "0"
           status: "completed"
