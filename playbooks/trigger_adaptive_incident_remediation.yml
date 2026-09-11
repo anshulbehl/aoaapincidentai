@@ -37,21 +37,22 @@
             category: "Software"
             subcategory: "Application"
 
-          ssl_db_failure:
-            short_description: "Database connection pool exhausted after certificate rotation"
+          nfs_stale_mount:
+            short_description: "NFS mounts gone stale causing application I/O errors across compute tier"
             description: >-
-              Database connection pool exhausted with SSL handshake failures following
-              last night certificate rotation. TLS negotiation failing with UNKNOWN_CA
-              errors. Downstream services unable to establish authenticated DB sessions,
-              causing cascading timeout failures across the payment processing pipeline.
+              NFS mounts on application nodes reporting stale file handle errors.
+              Application processes blocking on I/O operations, causing request queues
+              to back up and timeouts propagating to end users. Shared storage mounts
+              at /mnt/app-data and /mnt/shared-config are inaccessible, preventing
+              configuration reads and write-back operations across the compute tier.
             severity: "1"
             incident_type: "unknown"
-            category: "Database"
-            subcategory: "DB Connectivity"
+            category: "Storage"
+            subcategory: "NFS"
 
     - name: Validate scenario selection
       ansible.builtin.fail:
-        msg: "Invalid scenario '{{ scenario }}'. Choose: disk_full, memory_pressure, ssl_db_failure"
+        msg: "Invalid scenario '{{ scenario }}'. Choose: disk_full, memory_pressure, nfs_stale_mount"
       when: scenario not in scenario_config
 
     - name: Set active scenario facts
@@ -138,5 +139,6 @@
           SNOW Ticket:   {{ ticket_id }}
           Target Host:   {{ target_host }}
           Expected Path: {{ 'Path 1 - Existing JT in AAP' if scenario == 'disk_full' else 'Path 2 - Playbook Found in GitHub' if scenario == 'memory_pressure' else 'Path 3 - No Automation Found' }}
+          Note: {{ 'NFS scenario has no matching JT or GitHub playbook' if scenario == 'nfs_stale_mount' else '' }}
           AO Response:   {{ webhook_result.status }}
           ============================================================
