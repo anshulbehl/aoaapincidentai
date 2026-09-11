@@ -60,7 +60,7 @@
 
     - name: Find existing AAP project for approved repo
       ansible.builtin.uri:
-        url: "{{ aap_host }}/api/controller/v2/projects/?search={{ approved_repo | urlencode }}"
+        url: "{{ aap_host }}/api/controller/v2/projects/?name=Approved+Automation+-+incident-response"
         method: GET
         user: "{{ aap_username }}"
         password: "{{ aap_password }}"
