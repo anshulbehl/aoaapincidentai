@@ -6,6 +6,10 @@
 
   vars:
     scenario: "disk_full"
+    ao_base_url: "{{ lookup('env', 'AO2_BASE_URL') }}"
+    ao_sa_client_id: "{{ lookup('env', 'AO2_CLIENT_ID') }}"
+    ao_sa_client_secret: "{{ lookup('env', 'AO2_CLIENT_SECRET') }}"
+    ao_webhook_path: "snow-incident-scn6"
 
   tasks:
     - name: Set scenario parameters
@@ -89,13 +93,30 @@
           Scenario: {{ scenario }}
           Firing AO webhook...
 
+    - name: Get AO service account token
+      ansible.builtin.uri:
+        url: "{{ ao_base_url }}/api/v1/auth/token"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          grant_type: client_credentials
+          client_id: "{{ ao_sa_client_id }}"
+          client_secret: "{{ ao_sa_client_secret }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: ao_token_resp
+
+    - name: Set AO token
+      ansible.builtin.set_fact:
+        ao_token: "{{ ao_token_resp.json.access_token }}"
+
     - name: Fire AO webhook to start adaptive remediation workflow
       ansible.builtin.uri:
-        url: "{{ ao_webhook_url }}"
+        url: "{{ ao_base_url }}/api/v1/webhooks/{{ ao_webhook_path }}"
         method: POST
         headers:
+          Authorization: "Bearer {{ ao_token }}"
           Content-Type: "application/json"
-          Authorization: "Bearer {{ ao_webhook_token }}"
         body_format: json
         body:
           ticket_id: "{{ ticket_id }}"
