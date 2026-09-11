@@ -11,6 +11,11 @@
     aap_validate_certs: false
 
   tasks:
+    - name: Validate required variables are present
+      ansible.builtin.fail:
+        msg: "source_file_path is required but was not provided. Ensure the AO workflow node passes source_file_path from the agent output."
+      when: source_file_path is not defined or source_file_path == ''
+
     - name: Derive playbook filename from source path
       ansible.builtin.set_fact:
         playbook_filename: "{{ source_file_path | basename }}"
