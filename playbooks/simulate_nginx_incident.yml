@@ -1,0 +1,33 @@
+---
+- name: Simulate Nginx Service Incident
+  hosts: "{{ vm_name }}"
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Write simulated error entries to nginx error log
+      ansible.builtin.shell: |
+        mkdir -p /var/log/nginx
+        cat >> /var/log/nginx/error.log << 'EOF'
+        2026/09/17 16:00:01 [emerg] 1234#1234: bind() to 0.0.0.0:443 failed (98: Address already in use)
+        2026/09/17 16:00:01 [emerg] 1234#1234: bind() to 0.0.0.0:80 failed (98: Address already in use)
+        2026/09/17 16:00:01 [emerg] 1234#1234: still could not bind
+        2026/09/17 16:00:02 [alert] 1234#1234: worker process 5678 exited on signal 11
+        2026/09/17 16:00:03 [crit] 1234#1234: *1 SSL_do_handshake() failed (SSL: error:0A000086:SSL routines::certificate verify failed) while SSL handshaking
+        2026/09/17 16:00:05 [error] 1234#1234: *2 open() "/etc/nginx/ssl/server.crt" failed (2: No such file or directory)
+        2026/09/17 16:00:05 [emerg] 1234#1234: cannot load certificate "/etc/nginx/ssl/server.crt": BIO_new_file() failed
+        EOF
+
+    - name: Stop nginx service
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: stopped
+
+    - name: Confirm nginx is stopped
+      ansible.builtin.command: systemctl is-active nginx
+      register: nginx_state
+      ignore_errors: true
+
+    - name: Show service state
+      ansible.builtin.debug:
+        msg: "nginx is now: {{ nginx_state.stdout }}"
