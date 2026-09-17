@@ -4,25 +4,6 @@
   gather_facts: false
 
   tasks:
-    - name: Retrieve last 20 lines from journald
-      ansible.builtin.command: journalctl -u {{ service_issue }}.service -n 20 --no-pager
-      register: journald_logs
-      ignore_errors: true
-
-    - name: Retrieve last 20 lines from service log file
-      ansible.builtin.command: tail -n 20 /var/log/{{ service_issue }}/error.log
-      register: file_logs
-      ignore_errors: true
-
-    - name: Combine log sources
-      ansible.builtin.set_fact:
-        service_log_output: >-
-          {{
-            journald_logs.stdout
-            if journald_logs.stdout | length > 20
-            else file_logs.stdout | default('No logs found')
-          }}
-
     - name: Check service status
       ansible.builtin.systemd_service:
         name: "{{ service_issue }}"
@@ -30,6 +11,60 @@
       check_mode: true
       register: service_status
       ignore_errors: true
+
+    - name: Try journald logs
+      ansible.builtin.command: journalctl -u {{ service_issue }}.service -n 20 --no-pager
+      register: journald_logs
+      ignore_errors: true
+
+    - name: Try error log file
+      ansible.builtin.command: tail -n 20 /var/log/{{ service_issue }}/error.log
+      register: error_log
+      ignore_errors: true
+      when: journald_logs.stdout | length < 20
+
+    - name: Try access log file
+      ansible.builtin.command: tail -n 20 /var/log/{{ service_issue }}/access.log
+      register: access_log
+      ignore_errors: true
+      when:
+        - journald_logs.stdout | length < 20
+        - error_log.stdout | default('') | length < 20
+
+    - name: Find any log file for this service
+      ansible.builtin.find:
+        paths:
+          - /var/log/{{ service_issue }}
+          - /var/log
+        patterns: "{{ service_issue }}*.log"
+        age: -7d
+        size: 1
+      register: found_logs
+      ignore_errors: true
+      when:
+        - journald_logs.stdout | length < 20
+        - error_log.stdout | default('') | length < 20
+        - access_log.stdout | default('') | length < 20
+
+    - name: Read first found log file
+      ansible.builtin.command: tail -n 20 {{ found_logs.files[0].path }}
+      register: fallback_log
+      ignore_errors: true
+      when:
+        - journald_logs.stdout | length < 20
+        - error_log.stdout | default('') | length < 20
+        - access_log.stdout | default('') | length < 20
+        - found_logs.files | default([]) | length > 0
+
+    - name: Build service log output
+      ansible.builtin.set_fact:
+        service_log_output: >-
+          {{
+            journald_logs.stdout if journald_logs.stdout | length > 20
+            else error_log.stdout | default('') if error_log.stdout | default('') | length > 20
+            else access_log.stdout | default('') if access_log.stdout | default('') | length > 20
+            else fallback_log.stdout | default('No logs found for service ' + service_issue)
+          }}
 
     - name: Escape newlines in service logs
       ansible.builtin.set_fact:
