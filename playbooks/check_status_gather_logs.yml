@@ -4,10 +4,24 @@
   gather_facts: false
 
   tasks:
-    - name: Retrieve last 20 lines of service logs
+    - name: Retrieve last 20 lines from journald
       ansible.builtin.command: journalctl -u {{ service_issue }}.service -n 20 --no-pager
-      register: service_logs
+      register: journald_logs
       ignore_errors: true
+
+    - name: Retrieve last 20 lines from service log file
+      ansible.builtin.command: tail -n 20 /var/log/{{ service_issue }}/error.log
+      register: file_logs
+      ignore_errors: true
+
+    - name: Combine log sources
+      ansible.builtin.set_fact:
+        service_log_output: >-
+          {{
+            journald_logs.stdout
+            if journald_logs.stdout | length > 20
+            else file_logs.stdout | default('No logs found')
+          }}
 
     - name: Check service status
       ansible.builtin.systemd_service:
@@ -19,12 +33,12 @@
 
     - name: Escape newlines in service logs
       ansible.builtin.set_fact:
-        service_log_output_escaped: "{{ service_logs.stdout | regex_replace('(\r?\n)', '\\n') }}"
+        service_log_output_escaped: "{{ service_log_output | regex_replace('(\r?\n)', '\\n') }}"
 
     - name: Set stats for AO workflow
       ansible.builtin.set_stats:
         data:
-          service_log_output: "{{ service_logs.stdout }}"
+          service_log_output: "{{ service_log_output }}"
           service_status: "{{ 'running' if not service_status.changed else 'stopped' }}"
           gpt_prompt: >-
             \n### Instructions:\nA system service is failing on {{ vm_name }}. Below are the logs. Provide a single, concise fix instruction (1-2 lines), add restart of service.\n
