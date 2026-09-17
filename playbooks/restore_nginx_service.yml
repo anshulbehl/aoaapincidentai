@@ -1,0 +1,32 @@
+---
+- name: Restore Nginx Service
+  hosts: "{{ vm_name | default('cert-demo-vm') }}"
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Start nginx service
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Wait for nginx to stabilize
+      ansible.builtin.pause:
+        seconds: 3
+
+    - name: Verify nginx is running
+      ansible.builtin.command: systemctl is-active nginx
+      register: nginx_state
+      changed_when: false
+
+    - name: Report result
+      ansible.builtin.debug:
+        msg: "nginx status after recovery: {{ nginx_state.stdout }}"
+
+    - name: Publish recovery artifacts
+      ansible.builtin.set_stats:
+        data:
+          service_name: nginx
+          recovery_status: "{{ 'SUCCESS' if nginx_state.stdout == 'active' else 'FAILED' }}"
+          service_status_after: "{{ nginx_state.stdout }}"
