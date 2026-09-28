@@ -7,10 +7,10 @@
     snow_instance_url: "https://ansible.service-now.com"
     snow_username: "mcp-snow-svc"
     snow_password: "SNOW_PASSWORD_REDACTED"
-    app_name: "{{ app_name | default('inventory-service') }}"
-    artifact_version: "{{ artifact_version | default('0.0.0') }}"
-    change_request: "{{ change_request | default('') }}"
-    snow_close_note: "{{ snow_close_note | default('Deployment completed successfully. Change closed by automated pipeline.') }}"
+    app_name: "inventory-service"
+    artifact_version: "0.0.0"
+    change_request: ""
+    snow_close_note: "Deployment completed successfully. Change closed by automated pipeline."
 
   tasks:
     - name: Skip SNOW update if no change request provided
