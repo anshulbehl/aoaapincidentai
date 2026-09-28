@@ -24,8 +24,46 @@
     patched_version: "2.4.0"
     patched_cve: "CVE-2024-38819"
     patched_dep: "spring-beans==5.3.20.rhlw-00002"
+    snow_instance_url: "{{ snow_instance_url | default('https://ansible.service-now.com') }}"
+    snow_username: "{{ snow_username | default('mcp-snow-svc') }}"
+    snow_password: "{{ snow_password | default('SNOW_PASSWORD_REDACTED') }}"
 
   tasks:
+    - name: Create ServiceNow change request for this Lightwell patch
+      ansible.builtin.uri:
+        url: "{{ snow_instance_url }}/api/now/table/change_request"
+        method: POST
+        user: "{{ snow_username }}"
+        password: "{{ snow_password }}"
+        force_basic_auth: true
+        headers:
+          Content-Type: application/json
+          Accept: application/json
+        body_format: json
+        body:
+          short_description: "Lightwell patch {{ patched_cve }} - {{ gitea_repo }} {{ patched_version }}"
+          description: |
+            Automated deployment of Lightwell security patch for {{ patched_cve }}.
+            Application: {{ gitea_repo }}
+            Patch version: {{ patched_dep }}
+            Target version: {{ patched_version }}
+            Initiated by: AO CI/CD Pipeline simulation
+          type: standard
+          category: Software
+          risk: low
+          impact: "2"
+          urgency: "2"
+        status_code: 201
+      register: snow_chg_result
+
+    - name: Set change request number fact
+      ansible.builtin.set_fact:
+        chg_number: "{{ snow_chg_result.json.result.number }}"
+
+    - name: Show created change request
+      ansible.builtin.debug:
+        msg: "SNOW change request created: {{ chg_number }} - {{ snow_instance_url }}/nav_to.do?uri=change_request.do?sysparm_query=number={{ chg_number }}"
+
     - name: Get current SHA of main branch
       ansible.builtin.uri:
         url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/branches/{{ base_branch }}"
@@ -128,6 +166,20 @@
           branch: "{{ patch_branch }}"
         status_code: 200
 
+    - name: Commit CHANGE_REQUEST file so CI can pass CHG number to AO webhook
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/CHANGE_REQUEST"
+        method: POST
+        headers:
+          Authorization: "token {{ gitea_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          message: "chore: record SNOW change request {{ chg_number }}"
+          content: "{{ (chg_number + '\n') | b64encode }}"
+          branch: "{{ patch_branch }}"
+        status_code: 201
+
     - name: Open pull request
       ansible.builtin.uri:
         url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/pulls"
@@ -143,15 +195,17 @@
 
             **CVE:** {{ patched_cve }}
             **Severity:** HIGH - Path traversal in Spring Web MVC
+            **SNOW Change Request:** {{ chg_number }}
 
             ### Changes
             - `requirements.txt`: upgraded `spring-beans` from `5.3.18` to `{{ patched_dep }}`
             - `PATCHED_CVE`: updated to record remediated CVE
             - `version.txt`: bumped to `{{ patched_version }}`
+            - `CHANGE_REQUEST`: added {{ chg_number }} for AO pipeline tracking
 
             ### Validation
             CI pipeline will run integration tests. On pass, AO CD pipeline
-            promotes to dev then awaits approval for production deployment.
+            promotes to dev, awaits approval, deploys to prod, and closes {{ chg_number }}.
           head: "{{ patch_branch }}"
           base: "{{ base_branch }}"
         status_code: 201
@@ -164,6 +218,7 @@
     - name: Simulation complete - PR ready for manual merge
       ansible.builtin.debug:
         msg:
+          - "SNOW change request: {{ chg_number }}"
           - "PR #{{ pr_number }} is open and ready."
-          - "Review and merge here: {{ gitea_url }}/{{ gitea_owner }}/{{ gitea_repo }}/pulls/{{ pr_number }}"
-          - "On merge: Gitea Actions CI fires, then AO CD pipeline triggers automatically."
+          - "Review and merge: {{ gitea_url }}/{{ gitea_owner }}/{{ gitea_repo }}/pulls/{{ pr_number }}"
+          - "On merge: CI fires, AO pipeline triggers with {{ chg_number }}, closes ticket on success."
