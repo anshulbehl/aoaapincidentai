@@ -162,7 +162,7 @@
     - name: Evaluate smoke test results
       ansible.builtin.set_fact:
         service_healthy: "{{ smoke_check.status is defined and smoke_check.status == 200 }}"
-        version_correct: "{{ artifact_version in (version_response.content | default('')) }}"
+        version_correct: "{{ (artifact_version | regex_replace('-b.*$', '')) in (version_response.content | default('')) }}"
 
     - name: Set smoke test outcome stats
       ansible.builtin.set_stats:

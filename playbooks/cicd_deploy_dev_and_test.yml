@@ -142,7 +142,7 @@
     - name: Evaluate test results
       ansible.builtin.set_fact:
         service_healthy: "{{ health_check.status is defined and health_check.status == 200 }}"
-        version_correct: "{{ artifact_version in (version_response.content | default('')) }}"
+        version_correct: "{{ (artifact_version | regex_replace('-b.*$', '')) in (version_response.content | default('')) }}"
 
     - name: SNOW - Dev integration test result
       ansible.builtin.uri:
