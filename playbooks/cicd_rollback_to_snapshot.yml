@@ -44,10 +44,9 @@
         mode: "0755"
 
     - name: Restore prod from snapshot
-      ansible.builtin.unarchive:
-        src: "{{ snapshot_base }}/{{ snapshot_id }}.tar.gz"
-        dest: "/"
-        remote_src: true
+      ansible.builtin.command:
+        cmd: "tar -xzf {{ snapshot_base }}/{{ snapshot_id }}.tar.gz -C /"
+      changed_when: true
 
     - name: Restart prod service after restore
       ansible.builtin.systemd:

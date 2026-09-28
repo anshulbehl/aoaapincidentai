@@ -34,10 +34,9 @@
         snapshot_id: "{{ app_name }}-{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%S') }}"
 
     - name: Snapshot current prod state before deploy
-      ansible.builtin.archive:
-        path: "{{ prod_app_dir }}"
-        dest: "{{ snapshot_base }}/{{ snapshot_id }}.tar.gz"
-        format: gz
+      ansible.builtin.command:
+        cmd: "tar -czf {{ snapshot_base }}/{{ snapshot_id }}.tar.gz -C / opt/app-prod"
+      changed_when: true
       ignore_errors: true
 
     - name: Clone app from Gitea at specific SHA

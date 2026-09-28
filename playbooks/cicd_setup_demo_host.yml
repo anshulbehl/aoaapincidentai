@@ -145,10 +145,9 @@
       delay: 3
 
     - name: Take initial baseline snapshot
-      ansible.builtin.archive:
-        path: "{{ prod_app_dir }}"
-        dest: "{{ snapshot_base }}/{{ app_name }}-baseline.tar.gz"
-        format: gz
+      ansible.builtin.command:
+        cmd: "tar -czf {{ snapshot_base }}/{{ app_name }}-baseline.tar.gz -C / opt/app-prod"
+      changed_when: true
 
     - name: Print demo host setup summary
       ansible.builtin.debug:
