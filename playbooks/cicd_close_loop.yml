@@ -5,8 +5,8 @@
   gather_facts: false
   vars:
     snow_instance_url: "https://ansible.service-now.com"
-    snow_username: "{{ lookup('env', 'SNOW_USERNAME') }}"
-    snow_password: "{{ lookup('env', 'SNOW_PASSWORD') }}"
+    snow_username: ""
+    snow_password: ""
     app_name: "inventory-service"
     artifact_version: "0.0.0"
     change_request: ""

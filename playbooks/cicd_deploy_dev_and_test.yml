@@ -13,8 +13,8 @@
     change_request: ""
     ci_build_url: ""
     snow_instance_url: "https://ansible.service-now.com"
-    snow_username: "{{ lookup('env', 'SNOW_USERNAME') }}"
-    snow_password: "{{ lookup('env', 'SNOW_PASSWORD') }}"
+    snow_username: ""
+    snow_password: ""
     dev_port: 8080
     dev_app_dir: "/opt/app-dev"
     dev_service: "app-dev"

@@ -16,12 +16,12 @@
   gather_facts: false
   vars:
     _gitea_url: "http://52.55.229.162:3000"
-    _gitea_token: "{{ lookup('env', 'GITEA_TOKEN') }}"
+    _gitea_token: "{{ gitea_token | default('') }}"
     _gitea_owner: "gitea-admin"
     _gitea_repo: "inventory-service"
     _snow_instance_url: "https://ansible.service-now.com"
-    _snow_username: "{{ lookup('env', 'SNOW_USERNAME') }}"
-    _snow_password: "{{ lookup('env', 'SNOW_PASSWORD') }}"
+    _snow_username: "{{ snow_username | default('') }}"
+    _snow_password: "{{ snow_password | default('') }}"
     gitea_url: "{{ gitea_url_override | default(_gitea_url) }}"
     gitea_token: "{{ gitea_token_override | default(_gitea_token) }}"
     gitea_owner: "{{ gitea_owner_override | default(_gitea_owner) }}"

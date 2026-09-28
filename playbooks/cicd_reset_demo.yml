@@ -11,7 +11,7 @@
   vars:
     gitea_url: "http://52.55.229.162:3000"
     gitea_owner: "gitea-admin"
-    gitea_token: "{{ lookup('env', 'GITEA_TOKEN') }}"
+    gitea_token: ""
     gitea_repo: "inventory-service"
     patch_branch: lightwell-patch-CVE-2024-38819
     reset_dir: "/tmp/demo-reset"
