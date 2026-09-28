@@ -173,10 +173,18 @@
           branch: "{{ patch_branch }}"
         status_code: 200
 
+    - name: Get current SHA of CHANGE_REQUEST on patch branch (if exists)
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/CHANGE_REQUEST?ref={{ patch_branch }}"
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: [200, 404]
+      register: chg_file_check
+
     - name: Commit CHANGE_REQUEST file so CI can pass CHG number to AO webhook
       ansible.builtin.uri:
         url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/CHANGE_REQUEST"
-        method: POST
+        method: "{{ 'PUT' if chg_file_check.status == 200 else 'POST' }}"
         headers:
           Authorization: "token {{ gitea_token }}"
           Content-Type: application/json
@@ -185,7 +193,8 @@
           message: "chore: record SNOW change request {{ chg_number }}"
           content: "{{ (chg_number + '\n') | b64encode }}"
           branch: "{{ patch_branch }}"
-        status_code: 201
+          sha: "{{ chg_file_check.json.sha | default(omit) }}"
+        status_code: [200, 201]
 
     - name: Open pull request
       ansible.builtin.uri:
