@@ -1,0 +1,136 @@
+---
+# Reset the Gitea inventory-service repo to vulnerable baseline so the
+# Lightwell patch demo can be run again cleanly.
+#
+# What this does:
+#   1. Deletes the patch branch (if it exists)
+#   2. Reverts requirements.txt to vulnerable spring-beans==5.3.18
+#   3. Clears PATCHED_CVE
+#   4. Clears CHANGE_REQUEST
+#   5. Reverts version.txt to 2.3.0
+
+- name: Reset Gitea demo repo to vulnerable baseline
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gitea_url: "http://52.55.229.162:3000"
+    gitea_token: "GITEA_TOKEN_REDACTED"
+    gitea_owner: "gitea-admin"
+    gitea_repo: "inventory-service"
+    base_branch: main
+    patch_branch: lightwell-patch-CVE-2024-38819
+
+  tasks:
+    - name: Delete patch branch (if exists)
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/branches/{{ patch_branch }}"
+        method: DELETE
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: [204, 404]
+
+    - name: Get SHA of requirements.txt on main
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/requirements.txt?ref={{ base_branch }}"
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: 200
+      register: req_file
+
+    - name: Revert requirements.txt to vulnerable spring-beans 5.3.18
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/requirements.txt"
+        method: PUT
+        headers:
+          Authorization: "token {{ gitea_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          message: "chore: reset demo - revert to vulnerable spring-beans 5.3.18"
+          content: "{{ ('# inventory-service dependencies\n# VULNERABLE: spring-beans 5.3.18 contains CVE-2024-38819 (path traversal in web MVC)\n# Lightwell PR will patch this to the remediated build below\nspring-beans==5.3.18\n') | b64encode }}"
+          sha: "{{ req_file.json.sha }}"
+          branch: "{{ base_branch }}"
+        status_code: 200
+
+    - name: Get SHA of PATCHED_CVE on main
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/PATCHED_CVE?ref={{ base_branch }}"
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: [200, 404]
+      register: cve_file
+
+    - name: Clear PATCHED_CVE
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/PATCHED_CVE"
+        method: PUT
+        headers:
+          Authorization: "token {{ gitea_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          message: "chore: reset demo - clear PATCHED_CVE"
+          content: "{{ '' | b64encode }}"
+          sha: "{{ cve_file.json.sha }}"
+          branch: "{{ base_branch }}"
+        status_code: 200
+      when: cve_file.status == 200
+
+    - name: Get SHA of CHANGE_REQUEST on main
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/CHANGE_REQUEST?ref={{ base_branch }}"
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: [200, 404]
+      register: chg_file
+
+    - name: Clear CHANGE_REQUEST
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/CHANGE_REQUEST"
+        method: PUT
+        headers:
+          Authorization: "token {{ gitea_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          message: "chore: reset demo - clear CHANGE_REQUEST"
+          content: "{{ '' | b64encode }}"
+          sha: "{{ chg_file.json.sha }}"
+          branch: "{{ base_branch }}"
+        status_code: 200
+      when: chg_file.status == 200
+
+    - name: Get SHA of version.txt on main
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/version.txt?ref={{ base_branch }}"
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: 200
+      register: ver_file
+
+    - name: Revert version.txt to 2.3.0
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/version.txt"
+        method: PUT
+        headers:
+          Authorization: "token {{ gitea_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          message: "chore: reset demo - revert version to 2.3.0"
+          content: "{{ '2.3.0\n' | b64encode }}"
+          sha: "{{ ver_file.json.sha }}"
+          branch: "{{ base_branch }}"
+        status_code: 200
+
+    - name: Reset complete
+      ansible.builtin.debug:
+        msg:
+          - "Repo reset to vulnerable baseline."
+          - "requirements.txt: spring-beans==5.3.18 (CVE-2024-38819)"
+          - "PATCHED_CVE: cleared"
+          - "CHANGE_REQUEST: cleared"
+          - "version.txt: 2.3.0"
+          - "Branch {{ patch_branch }}: deleted"
+          - "Ready to run CI/CD Demo - Simulate Lightwell PR again."
