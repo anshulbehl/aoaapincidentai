@@ -9,7 +9,7 @@
   become: false
   gather_facts: false
   vars:
-    gitea_url: "http://localhost:3000"
+    gitea_url: "http://52.55.229.162:3000"
     gitea_owner: "gitea-admin"
     gitea_token: "GITEA_TOKEN_REDACTED"
     gitea_repo: "inventory-service"
@@ -34,7 +34,7 @@
       ansible.builtin.command:
         cmd: >-
           git clone
-          http://{{ gitea_owner }}:{{ gitea_token }}@localhost:3000/{{ gitea_owner }}/{{ gitea_repo }}.git
+          http://{{ gitea_owner }}:{{ gitea_token }}@52.55.229.162:3000/{{ gitea_owner }}/{{ gitea_repo }}.git
           {{ reset_dir }}
 
     - name: Configure git user
@@ -92,7 +92,7 @@
       ansible.builtin.command:
         cmd: >-
           git push
-          http://{{ gitea_owner }}:{{ gitea_token }}@localhost:3000/{{ gitea_owner }}/{{ gitea_repo }}.git
+          http://{{ gitea_owner }}:{{ gitea_token }}@52.55.229.162:3000/{{ gitea_owner }}/{{ gitea_repo }}.git
           main
         chdir: "{{ reset_dir }}"
       when: diff_check.rc != 0
