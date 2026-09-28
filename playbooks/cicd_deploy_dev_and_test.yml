@@ -4,9 +4,12 @@
   become: true
   gather_facts: false
   vars:
-    app_name: "{{ app_name | default('inventory-service') }}"
-    artifact_version: "{{ artifact_version | default('0.0.0') }}"
-    git_sha: "{{ git_sha | default('unknown') }}"
+    _app_name: "inventory-service"
+    _artifact_version: "0.0.0"
+    _git_sha: "unknown"
+    app_name: "{{ app_name_override | default(_app_name) }}"
+    artifact_version: "{{ artifact_version_override | default(_artifact_version) }}"
+    git_sha: "{{ git_sha_override | default(_git_sha) }}"
     dev_port: 8080
     dev_app_dir: "/opt/app-dev"
     dev_service: "app-dev"

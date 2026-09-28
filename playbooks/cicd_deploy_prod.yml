@@ -4,12 +4,15 @@
   become: true
   gather_facts: false
   vars:
-    app_name: "{{ app_name | default('inventory-service') }}"
-    artifact_version: "{{ artifact_version | default('0.0.0') }}"
-    git_sha: "{{ git_sha | default('unknown') }}"
-    ci_build_url: "{{ ci_build_url | default('') }}"
-    affected_cve: "{{ affected_cve | default('') }}"
-    change_request: "{{ change_request | default('CHG0000000') }}"
+    _app_name: "inventory-service"
+    _artifact_version: "0.0.0"
+    _git_sha: "unknown"
+    app_name: "{{ app_name_override | default(_app_name) }}"
+    artifact_version: "{{ artifact_version_override | default(_artifact_version) }}"
+    git_sha: "{{ git_sha_override | default(_git_sha) }}"
+    ci_build_url: ""
+    affected_cve: ""
+    change_request: "CHG0000000"
     prod_port: 80
     prod_app_dir: "/opt/app-prod"
     prod_service: "app-prod"

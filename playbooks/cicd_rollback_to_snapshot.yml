@@ -4,12 +4,12 @@
   become: true
   gather_facts: false
   vars:
-    app_name: "{{ app_name | default('inventory-service') }}"
-    artifact_version: "{{ artifact_version | default('0.0.0') }}"
-    snapshot_id: "{{ snapshot_id | default('') }}"
-    change_request: "{{ change_request | default('CHG0000000') }}"
-    snow_incident_note: "{{ snow_incident_note | default('Automated rollback executed after smoke test failure.') }}"
-    recommended_next_step: "{{ recommended_next_step | default('Investigate failure and re-run CI pipeline.') }}"
+    app_name: "inventory-service"
+    artifact_version: "0.0.0"
+    snapshot_id: ""
+    change_request: "CHG0000000"
+    snow_incident_note: "Automated rollback executed after smoke test failure."
+    recommended_next_step: "Investigate failure and re-run CI pipeline."
     prod_port: 80
     prod_app_dir: "/opt/app-prod"
     prod_service: "app-prod"
