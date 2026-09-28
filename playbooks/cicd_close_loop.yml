@@ -4,9 +4,9 @@
   connection: local
   gather_facts: false
   vars:
-    snow_instance_url: "{{ snow_instance_url | default('https://ansible.service-now.com') }}"
-    snow_username: "{{ snow_username | default('mcp-snow-svc') }}"
-    snow_password: "{{ snow_password | default('SNOW_PASSWORD_REDACTED') }}"
+    snow_instance_url: "https://ansible.service-now.com"
+    snow_username: "mcp-snow-svc"
+    snow_password: "SNOW_PASSWORD_REDACTED"
     app_name: "{{ app_name | default('inventory-service') }}"
     artifact_version: "{{ artifact_version | default('0.0.0') }}"
     change_request: "{{ change_request | default('') }}"

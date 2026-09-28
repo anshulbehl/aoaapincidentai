@@ -15,18 +15,25 @@
   connection: local
   gather_facts: false
   vars:
-    gitea_url: "{{ gitea_url | default('http://52.55.229.162:3000') }}"
-    gitea_token: "{{ gitea_token | default('GITEA_TOKEN_REDACTED') }}"
-    gitea_owner: "{{ gitea_owner | default('gitea-admin') }}"
-    gitea_repo: "{{ gitea_repo | default('inventory-service') }}"
+    _gitea_url: "http://52.55.229.162:3000"
+    _gitea_token: "GITEA_TOKEN_REDACTED"
+    _gitea_owner: "gitea-admin"
+    _gitea_repo: "inventory-service"
+    _snow_instance_url: "https://ansible.service-now.com"
+    _snow_username: "mcp-snow-svc"
+    _snow_password: "SNOW_PASSWORD_REDACTED"
+    gitea_url: "{{ gitea_url_override | default(_gitea_url) }}"
+    gitea_token: "{{ gitea_token_override | default(_gitea_token) }}"
+    gitea_owner: "{{ gitea_owner_override | default(_gitea_owner) }}"
+    gitea_repo: "{{ gitea_repo_override | default(_gitea_repo) }}"
+    snow_instance_url: "{{ snow_instance_url_override | default(_snow_instance_url) }}"
+    snow_username: "{{ snow_username_override | default(_snow_username) }}"
+    snow_password: "{{ snow_password_override | default(_snow_password) }}"
     base_branch: main
     patch_branch: lightwell-patch-CVE-2024-38819
     patched_version: "2.4.0"
     patched_cve: "CVE-2024-38819"
     patched_dep: "spring-beans==5.3.20.rhlw-00002"
-    snow_instance_url: "{{ snow_instance_url | default('https://ansible.service-now.com') }}"
-    snow_username: "{{ snow_username | default('mcp-snow-svc') }}"
-    snow_password: "{{ snow_password | default('SNOW_PASSWORD_REDACTED') }}"
 
   tasks:
     - name: Create ServiceNow change request for this Lightwell patch
