@@ -129,8 +129,8 @@
             Smoke test FAILED: service is up on port {{ prod_port }} but version manifest does not match expected version {{ artifact_version }}.
             {% endif %}
           ao_failed_checks: >-
-            {% if service_healthy and version_correct %}[]{% else %}
-            [{% if not service_healthy %}"health_endpoint_unreachable"{% endif %}{% if not version_correct %}{% if not service_healthy %},{% endif %}"version_manifest_mismatch"{% endif %}]
+            {% if service_healthy and version_correct %}none{% else %}
+            {% if not service_healthy %}health_endpoint_unreachable{% endif %}{% if not version_correct %} version_manifest_mismatch{% endif %}
             {% endif %}
 
   handlers:

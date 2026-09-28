@@ -1,0 +1,169 @@
+---
+# Simulates the full Lightwell PR flow via Gitea API:
+#   1. Create branch lightwell-patch-CVE-2024-38819
+#   2. Patch requirements.txt (vulnerable → Lightwell build)
+#   3. Set PATCHED_CVE
+#   4. Bump version.txt
+#   5. Open PR
+#   6. Merge PR  →  Gitea Actions CI fires  →  AO CD pipeline triggers
+#
+# Run this as "CI/CD Demo - Simulate Lightwell PR" job template.
+# No SSH credential needed - runs on localhost via Gitea API.
+
+- name: Simulate Lightwell patch PR in Gitea
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gitea_url: "{{ gitea_url | default('http://52.55.229.162:3000') }}"
+    gitea_token: "{{ gitea_token | default('GITEA_TOKEN_REDACTED') }}"
+    gitea_owner: "{{ gitea_owner | default('gitea-admin') }}"
+    gitea_repo: "{{ gitea_repo | default('inventory-service') }}"
+    base_branch: main
+    patch_branch: lightwell-patch-CVE-2024-38819
+    patched_version: "2.4.0"
+    patched_cve: "CVE-2024-38819"
+    patched_dep: "spring-beans==5.3.20.rhlw-00002"
+
+  tasks:
+    - name: Get current SHA of main branch
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/branches/{{ base_branch }}"
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: 200
+      register: base_branch_info
+
+    - name: Set base SHA fact
+      ansible.builtin.set_fact:
+        base_sha: "{{ base_branch_info.json.commit.id }}"
+
+    - name: Delete patch branch if it already exists (idempotent)
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/branches/{{ patch_branch }}"
+        method: DELETE
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: [204, 404]
+
+    - name: Create patch branch from main
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/branches"
+        method: POST
+        headers:
+          Authorization: "token {{ gitea_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          new_branch_name: "{{ patch_branch }}"
+          old_branch_name: "{{ base_branch }}"
+        status_code: 201
+
+    - name: Get current SHA of requirements.txt on patch branch
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/requirements.txt?ref={{ patch_branch }}"
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: 200
+      register: req_file
+
+    - name: Patch requirements.txt - replace vulnerable dep with Lightwell build
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/requirements.txt"
+        method: PUT
+        headers:
+          Authorization: "token {{ gitea_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          message: "fix: patch spring-beans to {{ patched_dep }} ({{ patched_cve }})"
+          content: "{{ ('# inventory-service dependencies\n# Lightwell patch applied: ' + patched_cve + '\n' + patched_dep + '\n') | b64encode }}"
+          sha: "{{ req_file.json.sha }}"
+          branch: "{{ patch_branch }}"
+        status_code: 200
+
+    - name: Get current SHA of PATCHED_CVE on patch branch
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/PATCHED_CVE?ref={{ patch_branch }}"
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: 200
+      register: cve_file
+
+    - name: Set PATCHED_CVE to remediated CVE ID
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/PATCHED_CVE"
+        method: PUT
+        headers:
+          Authorization: "token {{ gitea_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          message: "fix: mark {{ patched_cve }} as remediated by Lightwell"
+          content: "{{ (patched_cve + '\n') | b64encode }}"
+          sha: "{{ cve_file.json.sha }}"
+          branch: "{{ patch_branch }}"
+        status_code: 200
+
+    - name: Get current SHA of version.txt on patch branch
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/version.txt?ref={{ patch_branch }}"
+        headers:
+          Authorization: "token {{ gitea_token }}"
+        status_code: 200
+      register: ver_file
+
+    - name: Bump version.txt
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/contents/version.txt"
+        method: PUT
+        headers:
+          Authorization: "token {{ gitea_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          message: "chore: bump version to {{ patched_version }}"
+          content: "{{ (patched_version + '\n') | b64encode }}"
+          sha: "{{ ver_file.json.sha }}"
+          branch: "{{ patch_branch }}"
+        status_code: 200
+
+    - name: Open pull request
+      ansible.builtin.uri:
+        url: "{{ gitea_url }}/api/v1/repos/{{ gitea_owner }}/{{ gitea_repo }}/pulls"
+        method: POST
+        headers:
+          Authorization: "token {{ gitea_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          title: "[Lightwell] Patch {{ patched_cve }} - spring-beans {{ patched_dep }}"
+          body: |
+            ## Lightwell Automated Security Patch
+
+            **CVE:** {{ patched_cve }}
+            **Severity:** HIGH - Path traversal in Spring Web MVC
+
+            ### Changes
+            - `requirements.txt`: upgraded `spring-beans` from `5.3.18` to `{{ patched_dep }}`
+            - `PATCHED_CVE`: updated to record remediated CVE
+            - `version.txt`: bumped to `{{ patched_version }}`
+
+            ### Validation
+            CI pipeline will run integration tests. On pass, AO CD pipeline
+            promotes to dev then awaits approval for production deployment.
+          head: "{{ patch_branch }}"
+          base: "{{ base_branch }}"
+        status_code: 201
+      register: pr_result
+
+    - name: Set PR number fact
+      ansible.builtin.set_fact:
+        pr_number: "{{ pr_result.json.number }}"
+
+    - name: Simulation complete - PR ready for manual merge
+      ansible.builtin.debug:
+        msg:
+          - "PR #{{ pr_number }} is open and ready."
+          - "Review and merge here: {{ gitea_url }}/{{ gitea_owner }}/{{ gitea_repo }}/pulls/{{ pr_number }}"
+          - "On merge: Gitea Actions CI fires, then AO CD pipeline triggers automatically."

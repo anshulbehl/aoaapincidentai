@@ -106,10 +106,6 @@
             {% else %}
             Dev tests FAILED: service is up but version manifest does not contain expected version {{ artifact_version }}.
             {% endif %}
-          ao_failed_tests: >-
-            {% if service_healthy and version_correct %}[]{% else %}
-            [{% if not service_healthy %}"service_health_check"{% endif %}{% if not version_correct %}{% if not service_healthy %},{% endif %}"version_manifest_verification"{% endif %}]
-            {% endif %}
 
   handlers:
     - name: Reload systemd
