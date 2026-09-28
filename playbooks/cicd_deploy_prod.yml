@@ -39,15 +39,7 @@
       changed_when: true
       ignore_errors: true
 
-    - name: Clone app from Gitea at specific SHA
-      ansible.builtin.git:
-        repo: "http://{{ gitea_host | default('localhost') }}:{{ gitea_port | default(3000) }}/gitea-admin/{{ app_name }}.git"
-        dest: "{{ prod_app_dir }}"
-        version: "{{ git_sha }}"
-        force: true
-      when: gitea_host is defined
-
-    - name: Write version manifest to prod (base version for app.py to read)
+    - name: Write version manifest to prod
       ansible.builtin.copy:
         dest: "{{ prod_app_dir }}/version.txt"
         content: "{{ artifact_version | regex_replace('-b.*$', '') }}"
