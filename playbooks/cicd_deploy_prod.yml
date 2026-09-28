@@ -14,8 +14,8 @@
     affected_cve: ""
     change_request: ""
     snow_instance_url: "https://ansible.service-now.com"
-    snow_username: "mcp-snow-svc"
-    snow_password: "SNOW_PASSWORD_REDACTED"
+    snow_username: "{{ lookup('env', 'SNOW_USERNAME') }}"
+    snow_password: "{{ lookup('env', 'SNOW_PASSWORD') }}"
     prod_port: 80
     prod_app_dir: "/opt/app-prod"
     prod_service: "app-prod"
