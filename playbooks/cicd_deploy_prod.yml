@@ -91,7 +91,7 @@
     - name: Write version manifest to prod
       ansible.builtin.copy:
         dest: "{{ prod_app_dir }}/version.txt"
-        content: "{{ artifact_version | regex_replace('-b.*$', '') }}"
+        content: "{{ artifact_version }}"
         mode: "0644"
 
     - name: Write deployment metadata to prod

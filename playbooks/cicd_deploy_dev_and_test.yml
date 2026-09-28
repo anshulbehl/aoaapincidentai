@@ -73,7 +73,7 @@
     - name: Write version manifest to dev
       ansible.builtin.copy:
         dest: "{{ dev_app_dir }}/version.txt"
-        content: "{{ artifact_version | regex_replace('-b.*$', '') }}"
+        content: "{{ artifact_version }}"
         mode: "0644"
 
     - name: Write deployment metadata to dev
