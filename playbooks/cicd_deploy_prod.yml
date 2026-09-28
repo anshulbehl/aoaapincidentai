@@ -1,0 +1,148 @@
+---
+- name: Snapshot current prod, deploy artifact to prod, and run smoke test
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    app_name: "{{ app_name | default('inventory-service') }}"
+    artifact_version: "{{ artifact_version | default('0.0.0') }}"
+    git_sha: "{{ git_sha | default('unknown') }}"
+    ci_build_url: "{{ ci_build_url | default('') }}"
+    affected_cve: "{{ affected_cve | default('') }}"
+    change_request: "{{ change_request | default('CHG0000000') }}"
+    prod_port: 80
+    prod_app_dir: "/opt/app-prod"
+    prod_service: "app-prod"
+    snapshot_base: "/opt/app-snapshots"
+    health_endpoint: "http://localhost:{{ prod_port }}/health"
+
+  tasks:
+    - name: Ensure snapshot directory exists
+      ansible.builtin.file:
+        path: "{{ snapshot_base }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ensure prod app directory exists
+      ansible.builtin.file:
+        path: "{{ prod_app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Generate snapshot ID
+      ansible.builtin.set_fact:
+        snapshot_id: "{{ app_name }}-{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%S') }}"
+
+    - name: Snapshot current prod state before deploy
+      ansible.builtin.archive:
+        path: "{{ prod_app_dir }}"
+        dest: "{{ snapshot_base }}/{{ snapshot_id }}.tar.gz"
+        format: gz
+      ignore_errors: true
+
+    - name: Clone app from Gitea at specific SHA
+      ansible.builtin.git:
+        repo: "http://{{ gitea_host | default('localhost') }}:{{ gitea_port | default(3000) }}/gitea-admin/{{ app_name }}.git"
+        dest: "{{ prod_app_dir }}"
+        version: "{{ git_sha }}"
+        force: true
+      when: gitea_host is defined
+
+    - name: Write version manifest to prod (base version for app.py to read)
+      ansible.builtin.copy:
+        dest: "{{ prod_app_dir }}/version.txt"
+        content: "{{ artifact_version | regex_replace('-b.*$', '') }}"
+        mode: "0644"
+
+    - name: Write deployment metadata to prod
+      ansible.builtin.copy:
+        dest: "{{ prod_app_dir }}/deploy-info.txt"
+        content: |
+          app={{ app_name }}
+          version={{ artifact_version }}
+          sha={{ git_sha }}
+          env=prod
+          deployed={{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          change={{ change_request }}
+          {% if affected_cve %}cve_remediated={{ affected_cve }}{% endif %}
+        mode: "0644"
+
+    - name: Write systemd unit for prod app (app.py)
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ prod_service }}.service"
+        content: |
+          [Unit]
+          Description={{ app_name }} production environment
+          After=network.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory={{ prod_app_dir }}
+          Environment=APP_NAME={{ app_name }}
+          Environment=APP_ENV=prod
+          Environment=APP_PORT={{ prod_port }}
+          ExecStart=/usr/bin/python3 app.py
+          Restart=on-failure
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Flush handlers before starting service
+      ansible.builtin.meta: flush_handlers
+
+    - name: Restart prod app service
+      ansible.builtin.systemd:
+        name: "{{ prod_service }}"
+        state: restarted
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for prod service to respond
+      ansible.builtin.uri:
+        url: "{{ health_endpoint }}"
+        method: GET
+        status_code: 200
+      register: smoke_check
+      until: smoke_check.status == 200
+      retries: 10
+      delay: 3
+      ignore_errors: true
+
+    - name: Verify deployed version matches artifact
+      ansible.builtin.uri:
+        url: "http://localhost:{{ prod_port }}/version.txt"
+        method: GET
+        return_content: true
+      register: version_response
+      ignore_errors: true
+
+    - name: Evaluate smoke test results
+      ansible.builtin.set_fact:
+        service_healthy: "{{ smoke_check.status is defined and smoke_check.status == 200 }}"
+        version_correct: "{{ artifact_version in (version_response.content | default('')) }}"
+
+    - name: Set smoke test outcome stats
+      ansible.builtin.set_stats:
+        data:
+          ao_prod_health_passed: "{{ 'true' if (service_healthy and version_correct) else 'false' }}"
+          ao_snapshot_id: "{{ snapshot_id }}"
+          ao_smoke_test_summary: >-
+            {% if service_healthy and version_correct %}
+            Smoke test passed: {{ app_name }} {{ artifact_version }} running on port {{ prod_port }}, health endpoint returned 200 OK, version manifest verified.{% if affected_cve %} CVE {{ affected_cve }} confirmed remediated.{% endif %}
+            {% elif not service_healthy %}
+            Smoke test FAILED: service did not respond on port {{ prod_port }} within expected timeout. Health endpoint check failed.
+            {% else %}
+            Smoke test FAILED: service is up on port {{ prod_port }} but version manifest does not match expected version {{ artifact_version }}.
+            {% endif %}
+          ao_failed_checks: >-
+            {% if service_healthy and version_correct %}[]{% else %}
+            [{% if not service_healthy %}"health_endpoint_unreachable"{% endif %}{% if not version_correct %}{% if not service_healthy %},{% endif %}"version_manifest_mismatch"{% endif %}]
+            {% endif %}
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

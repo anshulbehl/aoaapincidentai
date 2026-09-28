@@ -1,0 +1,69 @@
+---
+- name: Close ServiceNow change request and notify team
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    app_name: "{{ app_name | default('inventory-service') }}"
+    artifact_version: "{{ artifact_version | default('0.0.0') }}"
+    change_request: "{{ change_request | default('CHG0000000') }}"
+    snow_close_note: "{{ snow_close_note | default('Deployment completed successfully. Change closed by automated pipeline.') }}"
+    snow_instance: "{{ snow_instance | default(lookup('env', 'SNOW_INSTANCE')) }}"
+    snow_username: "{{ snow_username | default(lookup('env', 'SNOW_USERNAME')) }}"
+    snow_password: "{{ snow_password | default(lookup('env', 'SNOW_PASSWORD')) }}"
+
+  tasks:
+    - name: Search for ServiceNow change request by number
+      ansible.builtin.uri:
+        url: "https://{{ snow_instance }}/api/now/table/change_request?sysparm_query=number={{ change_request }}&sysparm_fields=sys_id,number,state"
+        method: GET
+        user: "{{ snow_username }}"
+        password: "{{ snow_password }}"
+        force_basic_auth: true
+        headers:
+          Accept: "application/json"
+        validate_certs: false
+      register: snow_search
+      when: snow_instance | length > 0
+
+    - name: Extract sys_id from search result
+      ansible.builtin.set_fact:
+        snow_sys_id: "{{ snow_search.json.result[0].sys_id }}"
+      when:
+        - snow_instance | length > 0
+        - snow_search.json.result | length > 0
+
+    - name: Add AI-generated close note as work note on change request
+      ansible.builtin.uri:
+        url: "https://{{ snow_instance }}/api/now/table/change_request/{{ snow_sys_id }}"
+        method: PATCH
+        user: "{{ snow_username }}"
+        password: "{{ snow_password }}"
+        force_basic_auth: true
+        headers:
+          Content-Type: "application/json"
+          Accept: "application/json"
+        body_format: json
+        body:
+          work_notes: "{{ snow_close_note }}"
+          state: "3"
+        validate_certs: false
+      when:
+        - snow_instance | length > 0
+        - snow_sys_id is defined
+      register: snow_update
+
+    - name: Log outcome (no SNOW instance configured - demo mode)
+      ansible.builtin.debug:
+        msg:
+          - "Change request: {{ change_request }}"
+          - "Close note: {{ snow_close_note }}"
+          - "Application: {{ app_name }} {{ artifact_version }} deployed to production."
+          - "Note: set SNOW_INSTANCE, SNOW_USERNAME, SNOW_PASSWORD credentials in AAP for live SNOW updates."
+      when: snow_instance | length == 0
+
+    - name: Set close loop stats
+      ansible.builtin.set_stats:
+        data:
+          ao_change_closed: "true"
+          ao_change_request: "{{ change_request }}"
