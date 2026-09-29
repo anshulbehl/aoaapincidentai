@@ -30,10 +30,10 @@
     snow_username: "{{ snow_username_override | default(_snow_username) }}"
     snow_password: "{{ snow_password_override | default(_snow_password) }}"
     base_branch: main
-    patch_branch: lightwell-patch-CVE-2024-38819
+    patch_branch: lightwell-patch-CVE-2024-23334
     patched_version: "2.4.0"
-    patched_cve: "CVE-2024-38819"
-    patched_dep: "spring-beans==5.3.20.rhlw-00002"
+    patched_cve: "CVE-2024-23334"
+    patched_dep: "aiohttp==3.9.2.rhlw-00001"
 
   tasks:
     - name: Create ServiceNow change request for this Lightwell patch

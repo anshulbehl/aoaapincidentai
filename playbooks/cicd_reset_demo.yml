@@ -13,7 +13,7 @@
     gitea_owner: "gitea-admin"
     gitea_token: ""
     gitea_repo: "inventory-service"
-    patch_branch: lightwell-patch-CVE-2024-38819
+    patch_branch: lightwell-patch-CVE-2024-23334
     reset_dir: "/tmp/demo-reset"
 
   tasks:
@@ -50,9 +50,9 @@
         dest: "{{ reset_dir }}/requirements.txt"
         content: |
           # inventory-service dependencies
-          # VULNERABLE: spring-beans 5.3.18 contains CVE-2024-38819 (path traversal in web MVC)
+          # VULNERABLE: aiohttp 3.9.0 contains CVE-2024-23334 (path traversal via static file handler)
           # Lightwell PR will patch this to the remediated build below
-          spring-beans==5.3.18
+          aiohttp==3.9.0
 
     - name: Clear PATCHED_CVE
       ansible.builtin.copy:
