@@ -122,7 +122,7 @@
         body_format: json
         body:
           message: "fix: patch spring-beans to {{ patched_dep }} ({{ patched_cve }})"
-          content: "{{ ('# inventory-service dependencies\n# Lightwell patch applied: ' + patched_cve + '\n' + patched_dep + '\n') | b64encode }}"
+          content: "{{ ('# inventory-service dependencies\n# Lightwell patch applied: ' + patched_cve + ' (path traversal via static file handler)\n' + patched_dep + '\n') | b64encode }}"
           sha: "{{ req_file.json.sha }}"
           branch: "{{ patch_branch }}"
         status_code: 200
@@ -205,16 +205,16 @@
           Content-Type: application/json
         body_format: json
         body:
-          title: "[Lightwell] Patch {{ patched_cve }} - spring-beans {{ patched_dep }}"
+          title: "[Lightwell] Patch {{ patched_cve }} - {{ patched_dep }}"
           body: |
             ## Lightwell Automated Security Patch
 
             **CVE:** {{ patched_cve }}
-            **Severity:** HIGH - Path traversal in Spring Web MVC
+            **Severity:** HIGH - Path traversal via static file handler (aiohttp)
             **SNOW Change Request:** {{ chg_number }}
 
             ### Changes
-            - `requirements.txt`: upgraded `spring-beans` from `5.3.18` to `{{ patched_dep }}`
+            - `requirements.txt`: upgraded `aiohttp` from `3.9.0` to `{{ patched_dep }}`
             - `PATCHED_CVE`: updated to record remediated CVE
             - `version.txt`: bumped to `{{ patched_version }}`
             - `CHANGE_REQUEST`: added {{ chg_number }} for AO pipeline tracking
