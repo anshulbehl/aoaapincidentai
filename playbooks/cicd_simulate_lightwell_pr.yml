@@ -33,7 +33,7 @@
     patch_branch: lightwell-patch-CVE-2024-23334
     patched_version: "2.4.0"
     patched_cve: "CVE-2024-23334"
-    patched_dep: "aiohttp==3.9.2.rhlw-00001"
+    patched_dep: "aiohttp==3.9.0.rhlw-00001"
 
   tasks:
     - name: Create ServiceNow change request for this Lightwell patch
