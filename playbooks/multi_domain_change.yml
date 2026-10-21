@@ -14,10 +14,6 @@
   hosts: web:db:loadbalancer
   become: true
   gather_facts: true
-  vars:
-    change_number: "{{ change_number | default('CHG0000000') }}"
-    change_summary: "{{ change_summary | default('Multi-domain platform change') }}"
-    baseline_package: "{{ baseline_package | default('chrony') }}"
 
   tasks:
     - name: Resolve the domains this host belongs to
@@ -28,7 +24,7 @@
     # ---- Web domain tasks ----------------------------------------------------
     - name: Web domain — ensure baseline package is present
       ansible.builtin.package:
-        name: "{{ baseline_package }}"
+        name: "{{ baseline_package | default('chrony') }}"
         state: present
       register: _web_pkg
       when: "'web' in _domains"
@@ -64,7 +60,7 @@
       vars:
         _domain_tasks: >-
           {{
-            ([( 'package:' ~ baseline_package )] if _web_pkg is changed else [])
+            ([( 'package:' ~ (baseline_package | default('chrony')) )] if _web_pkg is changed else [])
             if _domain == 'web' else
             (['config:sysctl-kernel-panic-timeout'] if _db_config is changed else [])
             if _domain == 'db' else
@@ -95,8 +91,8 @@
           ao_change_impact: >-
             {{
               {
-                'change_number': change_number,
-                'change_summary': change_summary,
+                'change_number': change_number | default('CHG0000000'),
+                'change_summary': change_summary | default('Multi-domain platform change'),
                 'dry_run': ansible_check_mode | bool,
                 'hosts': _impact_hosts,
                 'total_changes': _impact_hosts | map(attribute='changed_count') | sum
