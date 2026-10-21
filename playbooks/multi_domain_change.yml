@@ -11,7 +11,7 @@
 # impact report from a single machine — add more VMs to new groups later without
 # changing this playbook.
 - name: Multi-domain platform change
-  hosts: all
+  hosts: web:db:loadbalancer
   become: true
   gather_facts: true
   vars:
