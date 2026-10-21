@@ -58,18 +58,30 @@
       loop_control:
         loop_var: _domain
       vars:
-        _domain_tasks: >-
-          {{
-            ([( 'package:' ~ (baseline_package | default('chrony')) )] if _web_pkg is changed else [])
-            if _domain == 'web' else
-            (['config:sysctl-kernel-panic-timeout'] if _db_config is changed else [])
-            if _domain == 'db' else
-            (['service:chronyd-start-enable'] if _lb_service is changed else [])
-          }}
+        _pkg: "{{ baseline_package | default('chrony') }}"
+        _changed_tasks: >-
+          {{ (['install ' ~ _pkg ~ ' (package missing on this host)']
+              if _web_pkg is changed else [])
+             if _domain == 'web' else
+             (['create /etc/sysctl.d/99-change-control.conf and set kernel.panic = 10 (config line absent)']
+              if _db_config is changed else [])
+             if _domain == 'db' else
+             (['enable and start chronyd (service not currently running/enabled)']
+              if _lb_service is changed else []) }}
+        _unchanged_tasks: >-
+          {{ ([_pkg ~ ' already installed — verified compliant']
+              if _web_pkg is not changed else [])
+             if _domain == 'web' else
+             (['kernel.panic = 10 already set in /etc/sysctl.d/99-change-control.conf — verified compliant']
+              if _db_config is not changed else [])
+             if _domain == 'db' else
+             (['chronyd already enabled and running — verified compliant']
+              if _lb_service is not changed else []) }}
         _entry:
           domain: "{{ _domain }}"
-          changed_tasks: "{{ _domain_tasks }}"
-          changed_count: "{{ _domain_tasks | length }}"
+          changed_tasks: "{{ _changed_tasks }}"
+          unchanged_tasks: "{{ _unchanged_tasks }}"
+          changed_count: "{{ _changed_tasks | length }}"
       changed_when: false
 
     - name: Build the full impact document
@@ -78,7 +90,7 @@
           {%- set entries = [] -%}
           {%- for h in play_hosts -%}
           {%- for d in hostvars[h]._host_impact | default([]) -%}
-          {%- set _ = entries.append({'host': h, 'domain': d.domain, 'changed_tasks': d.changed_tasks, 'changed_count': d.changed_count | int}) -%}
+          {%- set _ = entries.append({'host': h, 'domain': d.domain, 'changed_tasks': d.changed_tasks, 'unchanged_tasks': d.unchanged_tasks, 'changed_count': d.changed_count | int}) -%}
           {%- endfor -%}
           {%- endfor -%}
           {{ entries }}
